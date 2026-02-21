@@ -14,7 +14,7 @@
 
 import { runSimulation } from './simulator.js';
 import { generateInsights, generateActions } from './ai.js';
-import { generateMarkdownReport, generateHtmlReport } from './report.js';
+import { generateMarkdownReport, generateHTMLReport } from './report.js';
 
 // Import des données statiques
 import parkingData from '../../../data/parking.json' assert { type: 'json' };
