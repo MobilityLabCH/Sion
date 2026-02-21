@@ -1,0 +1,82 @@
+[
+  {
+    "zoneId": "centre",
+    "capacity": 850,
+    "basePriceCHFh": 2.5,
+    "peakMultiplier": 1.6,
+    "offpeakMultiplier": 0.7,
+    "longStayShare": 0.35,
+    "frictionIndex": 0.72,
+    "notes": "Parkings couverts + voirie; saturation fréquente en pointe"
+  },
+  {
+    "zoneId": "gare",
+    "capacity": 420,
+    "basePriceCHFh": 2.0,
+    "peakMultiplier": 1.5,
+    "offpeakMultiplier": 0.8,
+    "longStayShare": 0.55,
+    "frictionIndex": 0.65,
+    "notes": "P+R partiel; navetteurs longue durée dominants"
+  },
+  {
+    "zoneId": "est",
+    "capacity": 310,
+    "basePriceCHFh": 1.2,
+    "peakMultiplier": 1.2,
+    "offpeakMultiplier": 0.9,
+    "longStayShare": 0.25,
+    "frictionIndex": 0.40,
+    "notes": "Parking de quartier, mixte résidentiel/commercial"
+  },
+  {
+    "zoneId": "ouest",
+    "capacity": 280,
+    "basePriceCHFh": 1.0,
+    "peakMultiplier": 1.1,
+    "offpeakMultiplier": 0.95,
+    "longStayShare": 0.20,
+    "frictionIndex": 0.35,
+    "notes": "Zone calme, faible rotation"
+  },
+  {
+    "zoneId": "nord",
+    "capacity": 190,
+    "basePriceCHFh": 0.8,
+    "peakMultiplier": 1.1,
+    "offpeakMultiplier": 1.0,
+    "longStayShare": 0.15,
+    "frictionIndex": 0.28,
+    "notes": "Stationnement dispersé, peu de pression"
+  },
+  {
+    "zoneId": "sud",
+    "capacity": 600,
+    "basePriceCHFh": 0.6,
+    "peakMultiplier": 1.2,
+    "offpeakMultiplier": 0.9,
+    "longStayShare": 0.45,
+    "frictionIndex": 0.30,
+    "notes": "Zone industrielle, longue durée employés"
+  },
+  {
+    "zoneId": "emploi",
+    "capacity": 1200,
+    "basePriceCHFh": 0.0,
+    "peakMultiplier": 1.0,
+    "offpeakMultiplier": 1.0,
+    "longStayShare": 0.80,
+    "frictionIndex": 0.15,
+    "notes": "Parking privé entreprises, gratuit; levier de taxation faible sans mesure employeur"
+  },
+  {
+    "zoneId": "peripherie",
+    "capacity": 2200,
+    "basePriceCHFh": 0.0,
+    "peakMultiplier": 1.0,
+    "offpeakMultiplier": 1.0,
+    "longStayShare": 0.60,
+    "frictionIndex": 0.12,
+    "notes": "Stationnement résidentiel gratuit, P+R potentiel non activé"
+  }
+]

@@ -1,0 +1,133 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "id": "centre",
+      "properties": {
+        "zoneId": "centre",
+        "label": "Centre-ville",
+        "color": "#ef4444",
+        "description": "Noyau historique, haute fréquentation"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [7.358, 46.232], [7.368, 46.232], [7.368, 46.238], [7.358, 46.238], [7.358, 46.232]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "gare",
+      "properties": {
+        "zoneId": "gare",
+        "label": "Gare",
+        "color": "#f97316",
+        "description": "Pôle multimodal, fort trafic pendulaire"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [7.352, 46.228], [7.360, 46.228], [7.360, 46.233], [7.352, 46.233], [7.352, 46.228]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "est",
+      "properties": {
+        "zoneId": "est",
+        "label": "Est",
+        "color": "#eab308",
+        "description": "Zone résidentielle est, mixte"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [7.368, 46.230], [7.380, 46.230], [7.380, 46.238], [7.368, 46.238], [7.368, 46.230]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "ouest",
+      "properties": {
+        "zoneId": "ouest",
+        "label": "Ouest",
+        "color": "#22c55e",
+        "description": "Zone résidentielle ouest, accès difficile"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [7.342, 46.228], [7.352, 46.228], [7.352, 46.238], [7.342, 46.238], [7.342, 46.228]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "nord",
+      "properties": {
+        "zoneId": "nord",
+        "label": "Nord",
+        "color": "#3b82f6",
+        "description": "Quartiers nord, proche coteaux"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [7.352, 46.238], [7.372, 46.238], [7.372, 46.246], [7.352, 46.246], [7.352, 46.238]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "sud",
+      "properties": {
+        "zoneId": "sud",
+        "label": "Sud",
+        "color": "#8b5cf6",
+        "description": "Plaine du Rhône, industrie légère"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [7.350, 46.218], [7.375, 46.218], [7.375, 46.228], [7.350, 46.228], [7.350, 46.218]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "emploi",
+      "properties": {
+        "zoneId": "emploi",
+        "label": "Zone Emploi",
+        "color": "#ec4899",
+        "description": "Zone industrielle & tertiaire, grands employeurs"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [7.375, 46.220], [7.392, 46.220], [7.392, 46.230], [7.375, 46.230], [7.375, 46.220]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "peripherie",
+      "properties": {
+        "zoneId": "peripherie",
+        "label": "Périphérie",
+        "color": "#14b8a6",
+        "description": "Communes périurbaines, forte dépendance auto"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [7.330, 46.215], [7.400, 46.215], [7.400, 46.250], [7.330, 46.250], [7.330, 46.215]
+        ]]
+      }
+    }
+  ]
+}
