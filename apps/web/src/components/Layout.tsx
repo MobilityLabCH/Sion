@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { useApp } from '../hooks/store.ts';
+import { useApp } from '../hooks/store';
 
 const NAV = [
   { to: '/', label: 'Dashboard', icon: '◈' },
