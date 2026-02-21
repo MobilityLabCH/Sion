@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useApp } from '../hooks/store.ts';
+import { useApp } from '../hooks/store';
 import { DEFAULT_SCENARIO } from '../types.ts';
 import * as api from '../lib/api.ts';
 import type { InsightsResponse } from '../types.ts';
