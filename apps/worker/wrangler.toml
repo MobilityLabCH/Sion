@@ -1,0 +1,18 @@
+name = "sion"
+main = "src/index.ts"
+compatibility_date = "2024-07-25"
+compatibility_flags = ["nodejs_compat"]
+
+# ⚡ Workers AI binding
+[ai]
+binding = "AI"
+
+# 🗄️ KV Namespace
+# Créer avec: npx wrangler kv:namespace create SION_KV
+[[kv_namespaces]]
+binding = "KV"
+id = "REMPLACER_PAR_VOTRE_KV_ID"
+preview_id = "REMPLACER_PAR_VOTRE_KV_PREVIEW_ID"
+
+[vars]
+ENVIRONMENT = "production"
