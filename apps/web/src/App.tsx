@@ -1,12 +1,12 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { useStore } from "./hooks/store";
+import { AppProvider } from './hooks/store';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
-import ScenarioBuilder from './pages/ScenarioBuilder.tsx';
-import Results from './pages/Results.tsx';
-import Personas from './pages/Personas.tsx';
-import Actions from './pages/Actions.tsx';
-import Ameliorations from './pages/Ameliorations.tsx';
+import ScenarioBuilder from './pages/ScenarioBuilder';
+import Results from './pages/Results';
+import Personas from './pages/Personas';
+import Actions from './pages/Actions';
+import Ameliorations from './pages/Ameliorations';
 
 export default function App() {
   return (
