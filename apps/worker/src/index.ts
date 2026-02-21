@@ -1,3 +1,4 @@
+import zones from '../data/zones.json'; // Ajuste le chemin selon ton dossier data
 export default {
   async fetch(request: Request, env: any) {
     const url = new URL(request.url);
