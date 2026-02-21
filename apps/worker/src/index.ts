@@ -6,7 +6,7 @@ import type { Scenario } from './types.js';
 
 // ─── Import mock data ────────────────────────────────────────────────────────
 // Ces données sont bundlées dans le worker
-import zonesGeoJSON from '../../../data/zones.geojson' assert { type: 'json' };
+import zonesGeoJSON from '../../../data/zones.json' assert { type: 'json' };
 import parkingData from '../../../data/parking.json' assert { type: 'json' };
 import tpData from '../../../data/tp.json' assert { type: 'json' };
 import personasData from '../../../data/personas.json' assert { type: 'json' };
