@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { useApp } from '../hooks/store.ts';
+import { useApp } from '../hooks/store';
 
 const MODE_COLORS: Record<string, string> = {
   'Voiture': 'bg-red-50 text-red-700 border-red-200',
