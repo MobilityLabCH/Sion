@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useApp } from '../hooks/store.ts';
+import { useApp } from '../hooks/store';
 import ZoneMap from '../components/ZoneMap.tsx';
 import KPICard from '../components/KPICard.tsx';
 import CategoryPill from '../components/CategoryPill.tsx';
