@@ -1,4 +1,4 @@
-import type { Scenario, SimulationResults, InsightsResponse, ActionsResponse } from '../types.ts';
+import type { Scenario, SimulationResults, InsightsResponse, ActionsResponse } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
