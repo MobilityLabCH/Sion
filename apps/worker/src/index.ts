@@ -1,3 +1,4 @@
+// DEPLOY TEST 2026-02-21
 /**
  * Sion Mobility Pricing Simulator — Worker API
  * Toutes les routes sont définies ici.
