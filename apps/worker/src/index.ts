@@ -16,10 +16,10 @@ import { generateInsights, generateActions } from './ai.js';
 import { generateMarkdownReport, generateHtmlReport } from './report.js';
 
 // Import des données statiques
-import parkingData from '../../data/parking.json' assert { type: 'json' };
-import tpData from '../../data/tp.json' assert { type: 'json' };
-import personasData from '../../data/personas.json' assert { type: 'json' };
-import zonesData from '../../data/zones.json' assert { type: 'json' };
+import parkingData from '../../../data/parking.json' assert { type: 'json' };
+import tpData from '../../../data/tp.json' assert { type: 'json' };
+import personasData from '../../../data/personas.json' assert { type: 'json' };
+import zonesData from '../../../data/zones.json' assert { type: 'json' };
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
