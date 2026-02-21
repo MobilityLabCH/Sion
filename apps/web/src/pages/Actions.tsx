@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useApp } from '../hooks/store.ts';
+import { useApp } from '../hooks/store';
 import * as api from '../lib/api.ts';
 
 const HORIZONS = [
