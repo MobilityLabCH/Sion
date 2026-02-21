@@ -3,46 +3,15 @@ main = "src/index.ts"
 compatibility_date = "2024-07-25"
 compatibility_flags = ["nodejs_compat"]
 
-# ⚡ Workers AI binding
-[ai]
-binding = "AI"
-
-# 🗄️ KV Namespacename = "sion"
-main = "src/index.ts"
-compatibility_date = "2024-07-25"
-compatibility_flags = ["nodejs_compat"]
-
+# Workers AI binding
 [ai]
 binding = "AI"
 
 [vars]
 ENVIRONMENT = "production"
-```
 
-5. Cliquez **Commit changes** (bouton vert en haut à droite)
-
-C'est le seul fichier à modifier — juste supprimer les 4 lignes KV qui causent l'erreur.
-
----
-
-## Étape 4 — Relancer le déploiement
-
-Retournez sur Cloudflare → Worker **sion** → onglet **Deployments**.
-
-Cliquez **Trigger deploy** ou **Retry**.
-
----
-
-## Étape 5 — Vérifier que ça marche
-
-Ouvrez dans votre navigateur :
-```
-https://sion.ericimstepf.workers.dev/api/health
-# Créer avec: npx wrangler kv:namespace create SION_KV
-[[kv_namespaces]]
-binding = "KV"
-id = "REMPLACER_PAR_VOTRE_KV_ID"
-preview_id = "REMPLACER_PAR_VOTRE_KV_PREVIEW_ID"
-
-[vars]
-ENVIRONMENT = "production"
+# Si tu utilises KV, décommente et mets tes IDs
+# [[kv_namespaces]]
+# binding = "KV"
+# id = "TON_KV_ID"
+# preview_id = "TON_KV_PREVIEW_ID"
