@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { AppProvider } from "./hooks/store";
+import { AppProvider } from "./hooks/store.tsx";
 import Layout from './components/Layout.tsx';
 import Dashboard from './pages/Dashboard.tsx';
 import ScenarioBuilder from './pages/ScenarioBuilder.tsx';
