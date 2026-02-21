@@ -1,7 +1,7 @@
 // CI_MARKER: 2026-02-21-2156
 
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { AppProvider } from './hooks/store';
+import { AppProvider } from './hooks/store";
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import ScenarioBuilder from './pages/ScenarioBuilder';
