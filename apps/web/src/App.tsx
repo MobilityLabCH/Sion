@@ -1,7 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { AppProvider } from "./hooks/store.tsx";
-import Layout from './components/Layout.tsx';
-import Dashboard from './pages/Dashboard.tsx';
+import { AppProvider } from "./hooks/store";
+import Layout from './components/Layout';
+import Dashboard from './pages/Dashboard';
 import ScenarioBuilder from './pages/ScenarioBuilder.tsx';
 import Results from './pages/Results.tsx';
 import Personas from './pages/Personas.tsx';
