@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { useApp } from '../hooks/store.ts';
+import { useApp } from '../hooks/store';
 import SliderField from '../components/SliderField.tsx';
 import ToggleField from '../components/ToggleField.tsx';
 import type { Scenario } from '../types.ts';
