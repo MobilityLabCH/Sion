@@ -10,8 +10,15 @@ const NAV = [
   { to: '/ameliorations', label: 'Améliorations', icon: '✦' },
 ];
 
+const SEV_COLORS: Record<string, string> = {
+  fluide: 'bg-green-400',
+  modéré: 'bg-amber-400',
+  dense: 'bg-orange-500',
+  bloqué: 'bg-red-500',
+};
+
 export default function Layout() {
-  const { results, scenario } = useApp();
+  const { results, scenario, trafficData, isLoadingTraffic } = useApp();
   const navigate = useNavigate();
 
   return (
@@ -52,14 +59,29 @@ export default function Layout() {
               ))}
             </nav>
 
-            {/* Status badge */}
+            {/* Status badges */}
             <div className="flex items-center gap-2">
+              {/* TomTom traffic indicator */}
+              {isLoadingTraffic ? (
+                <div className="hidden sm:flex items-center gap-1.5 text-xs text-ink-300 px-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-ink-200 animate-pulse" />
+                  trafic…
+                </div>
+              ) : trafficData?.connected ? (
+                <div className="hidden sm:flex items-center gap-1.5 bg-ink-50 text-ink-600 text-xs font-medium px-2.5 py-1 rounded-full border border-ink-200">
+                  <span className={`w-1.5 h-1.5 rounded-full ${SEV_COLORS[trafficData.severity ?? 'fluide'] ?? 'bg-ink-300'} animate-pulse`} />
+                  {trafficData.currentSpeed} km/h
+                </div>
+              ) : null}
+
+              {/* Simulation shift badge */}
               {results && (
                 <div className="hidden sm:flex items-center gap-1.5 bg-green-50 text-green-700 text-xs font-medium px-2.5 py-1 rounded-full border border-green-200">
-                  <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
                   {(results.globalShiftIndex * 100).toFixed(0)}% shift
                 </div>
               )}
+
               <button
                 onClick={() => navigate('/scenario')}
                 className="btn-primary py-1.5 text-xs"
@@ -78,12 +100,16 @@ export default function Layout() {
 
       {/* Footer */}
       <footer className="border-t border-ink-100 bg-white mt-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between flex-wrap gap-2">
           <span className="text-xs text-ink-400">
-            Données mock · Résultats indicatifs uniquement
+            Données indicatives · MobilityLab Sion 2025
+            {trafficData?.connected && (
+              <> · Trafic: <span className="font-medium">{trafficData.severity}</span> ({trafficData.currentSpeed} km/h)</>
+            )}
           </span>
           <span className="text-xs text-ink-400">
-            Sion Mobility Pricing Simulator v0.1
+            Sion Mobility Pricing Simulator v3.0
+            {trafficData?.connected && ` · TomTom ${new Date(trafficData.timestamp!).toLocaleTimeString('fr-CH', { hour: '2-digit', minute: '2-digit' })}`}
           </span>
         </div>
       </footer>
