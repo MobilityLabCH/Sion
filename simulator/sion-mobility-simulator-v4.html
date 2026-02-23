@@ -7,9 +7,9 @@
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap');
 :root {
-  --bg:#0b0f17; --s1:#111827; --s2:#1a2236; --s3:#202c3e;
-  --bd:#2a3a52; --bd2:#38506a;
-  --tx:#d8e8f8; --tx2:#6a8aaa; --tx3:#3a5070;
+  --bg:#13202e; --s1:#1a2a3a; --s2:#203040; --s3:#263648;
+  --bd:#304860; --bd2:#3e5870;
+  --tx:#e8f2ff; --tx2:#8aaac8; --tx3:#4a6080;
   --ac:#2563eb; --ac-d:rgba(37,99,235,.12);
   --tl:#0d9488; --tl-d:rgba(13,148,136,.10);
   --gn:#16a34a; --gn-d:rgba(22,163,74,.10);
@@ -146,7 +146,7 @@ input[type=range]::-webkit-slider-runnable-track{background:linear-gradient(to r
 .view.on{display:flex}
 
 /* ── MAP ── */
-.mapw{position:relative;flex:1;overflow:hidden;background:#060c13}
+.mapw{position:relative;flex:1;overflow:hidden;background:#0a1524}
 .msvg{width:100%;height:100%}
 .zone-g{cursor:pointer}
 .zone-g:hover .zf{filter:brightness(1.2)}
@@ -537,8 +537,8 @@ input[type=range]::-webkit-slider-runnable-track{background:linear-gradient(to r
       <svg class="msvg" viewBox="0 0 790 400" preserveAspectRatio="xMidYMid meet">
         <defs>
           <radialGradient id="bgG" cx="42%" cy="38%">
-            <stop offset="0%" stop-color="#0d1928"/>
-            <stop offset="100%" stop-color="#040a10"/>
+            <stop offset="0%" stop-color="#122438"/>
+            <stop offset="100%" stop-color="#080f1c"/>
           </radialGradient>
           <filter id="glow">
             <feGaussianBlur stdDeviation="3" result="b"/>
@@ -560,11 +560,11 @@ input[type=range]::-webkit-slider-runnable-track{background:linear-gradient(to r
         </g>
 
         <!-- Rhône valley floor -->
-        <ellipse cx="395" cy="222" rx="390" ry="90" fill="#0c1b2e" opacity="0.55"/>
+        <ellipse cx="395" cy="222" rx="390" ry="90" fill="#0c1f30" opacity="0.4"/>
 
         <!-- Rhône river — realistic Valais path -->
-        <path d="M0,226 C70,218 140,224 210,220 C280,216 320,222 375,220 C430,218 490,223 560,220 C630,217 710,222 790,218" fill="none" stroke="#0b3552" stroke-width="24" opacity="0.9"/>
-        <path d="M0,226 C70,218 140,224 210,220 C280,216 320,222 375,220 C430,218 490,223 560,220 C630,217 710,222 790,218" fill="none" stroke="#175878" stroke-width="7" opacity="0.45"/>
+        <path d="M0,226 C70,218 140,224 210,220 C280,216 320,222 375,220 C430,218 490,223 560,220 C630,217 710,222 790,218" fill="none" stroke="#0d3d5e" stroke-width="24" opacity="0.9"/>
+        <path d="M0,226 C70,218 140,224 210,220 C280,216 320,222 375,220 C430,218 490,223 560,220 C630,217 710,222 790,218" fill="none" stroke="#1a6080" stroke-width="7" opacity="0.45"/>
         <path d="M0,226 C70,218 140,224 210,220 C280,216 320,222 375,220 C430,218 490,223 560,220 C630,217 710,222 790,218" fill="none" stroke="#226a90" stroke-width="1.5" opacity="0.3"/>
         <text x="670" y="210" fill="#1a4a6a" font-size="9" font-family="Syne" font-weight="700" opacity=".8" letter-spacing=".15em">RHÔNE</text>
 
@@ -592,7 +592,7 @@ input[type=range]::-webkit-slider-runnable-track{background:linear-gradient(to r
 
         <!-- Zone Emploi Est — CERM, HES-SO, Zone industrielle -->
         <g id="zone-emploi" class="zone-g" data-zone="emploi" onclick="selZone('emploi')">
-          <ellipse cx="548" cy="196" rx="72" ry="40" fill="#190e30" class="zf" opacity=".9"/>
+          <ellipse cx="548" cy="196" rx="72" ry="40" fill="#221444" class="zf" opacity=".9"/>
           <ellipse cx="548" cy="196" rx="72" ry="40" fill="#8b5cf6" opacity=".05"/>
           <rect x="476" y="156" width="144" height="80" rx="8" fill="transparent" stroke="#8b5cf6" stroke-width="1" opacity=".5"/>
           <text x="548" y="191" text-anchor="middle" font-size="10" font-weight="700" fill="#8b5cf6" font-family="Syne">Zone Emploi Est</text>
@@ -601,7 +601,7 @@ input[type=range]::-webkit-slider-runnable-track{background:linear-gradient(to r
 
         <!-- Gare CFF -->
         <g id="zone-gare" class="zone-g" data-zone="gare" onclick="selZone('gare')">
-          <rect x="264" y="196" width="68" height="46" rx="6" fill="#1a1400" class="zf" opacity=".95"/>
+          <rect x="264" y="196" width="68" height="46" rx="6" fill="#221c00" class="zf" opacity=".95"/>
           <rect x="264" y="196" width="68" height="46" rx="6" fill="#f59e0b" opacity=".07"/>
           <rect x="264" y="196" width="68" height="46" rx="6" stroke="#f59e0b" stroke-width="1.2" fill="none" opacity=".5"/>
           <text x="298" y="218" text-anchor="middle" font-size="11" font-weight="700" fill="#f59e0b" font-family="Syne">Gare CFF</text>
@@ -610,7 +610,7 @@ input[type=range]::-webkit-slider-runnable-track{background:linear-gradient(to r
 
         <!-- Centre-ville (Place du Midi, Vieille Ville) -->
         <g id="zone-centre" class="zone-g" data-zone="centre" onclick="selZone('centre')">
-          <rect x="322" y="178" width="104" height="60" rx="7" fill="#200808" class="zf" opacity=".95"/>
+          <rect x="322" y="178" width="104" height="60" rx="7" fill="#2a1010" class="zf" opacity=".95"/>
           <rect x="322" y="178" width="104" height="60" rx="7" fill="#dc2626" opacity=".08"/>
           <rect x="322" y="178" width="104" height="60" rx="7" stroke="#dc2626" stroke-width="1.8" fill="none" opacity=".7"/>
           <text x="374" y="203" text-anchor="middle" font-size="12" font-weight="700" fill="#ef4444" font-family="Syne" filter="url(#glow)">Centre-ville</text>
@@ -620,7 +620,7 @@ input[type=range]::-webkit-slider-runnable-track{background:linear-gradient(to r
 
         <!-- Résidentiel Nord -->
         <g id="zone-nord" class="zone-g" data-zone="nord" onclick="selZone('nord')">
-          <rect x="342" y="143" width="74" height="31" rx="5" fill="#121808" class="zf" opacity=".9"/>
+          <rect x="342" y="143" width="74" height="31" rx="5" fill="#18221a" class="zf" opacity=".9"/>
           <rect x="342" y="143" width="74" height="31" rx="5" stroke="#65a30d" stroke-width="1" fill="none" opacity=".4"/>
           <text x="379" y="157" text-anchor="middle" font-size="9" font-weight="600" fill="#65a30d" font-family="Syne">Résidentiel Nord</text>
           <text x="379" y="168" text-anchor="middle" font-size="8" fill="#3d6008" font-family="Syne">Zone 3 · 1.50 CHF/h</text>
@@ -628,7 +628,7 @@ input[type=range]::-webkit-slider-runnable-track{background:linear-gradient(to r
 
         <!-- P+R Ouest (en projet) -->
         <g id="zone-pr" class="zone-g" data-zone="pr" onclick="selZone('pr')">
-          <rect x="194" y="200" width="64" height="30" rx="5" fill="#0a1e20" class="zf" opacity=".9"/>
+          <rect x="194" y="200" width="64" height="30" rx="5" fill="#0e2428" class="zf" opacity=".9"/>
           <rect x="194" y="200" width="64" height="30" rx="5" stroke="#0d9488" stroke-width="1.5" fill="none" opacity=".6"/>
           <text x="226" y="215" text-anchor="middle" font-size="9" font-weight="700" fill="#0d9488" font-family="Syne">P+R Ouest</text>
           <text x="226" y="225" text-anchor="middle" font-size="7" fill="#0a5048" font-family="Syne">(en projet)</text>
@@ -636,42 +636,42 @@ input[type=range]::-webkit-slider-runnable-track{background:linear-gradient(to r
 
         <!-- ═══ COMMUNES PÉRIPHÉRIQUES ═══ -->
         <g id="zone-saviese" class="zone-g" data-zone="saviese" onclick="selZone('saviese')">
-          <ellipse cx="148" cy="146" rx="66" ry="44" fill="#0d1a0d" opacity=".9" class="zf"/>
+          <ellipse cx="148" cy="146" rx="66" ry="44" fill="#122212" opacity=".9" class="zf"/>
           <ellipse cx="148" cy="146" rx="66" ry="44" stroke="#16a34a" stroke-width="1.2" fill="none" opacity=".5"/>
           <text x="148" y="141" text-anchor="middle" font-size="12" font-weight="700" fill="#4ade80" font-family="Syne">Savièse</text>
           <text x="148" y="155" text-anchor="middle" font-size="8" fill="#2d8a4a" font-family="Syne">7 000 hab. · 22 min TP</text>
         </g>
 
         <g id="zone-conthey" class="zone-g" data-zone="conthey" onclick="selZone('conthey')">
-          <ellipse cx="80" cy="217" rx="58" ry="36" fill="#0d1a0d" opacity=".9" class="zf"/>
+          <ellipse cx="80" cy="217" rx="58" ry="36" fill="#122212" opacity=".9" class="zf"/>
           <ellipse cx="80" cy="217" rx="58" ry="36" stroke="#16a34a" stroke-width="1.2" fill="none" opacity=".5"/>
           <text x="80" y="212" text-anchor="middle" font-size="12" font-weight="700" fill="#4ade80" font-family="Syne">Conthey</text>
           <text x="80" y="226" text-anchor="middle" font-size="8" fill="#2d8a4a" font-family="Syne">10 000 hab. · 18 min TP</text>
         </g>
 
         <g id="zone-nendaz" class="zone-g" data-zone="nendaz" onclick="selZone('nendaz')">
-          <ellipse cx="374" cy="348" rx="60" ry="36" fill="#0d1a0d" opacity=".9" class="zf"/>
+          <ellipse cx="374" cy="348" rx="60" ry="36" fill="#122212" opacity=".9" class="zf"/>
           <ellipse cx="374" cy="348" rx="60" ry="36" stroke="#16a34a" stroke-width="1.2" fill="none" opacity=".5"/>
           <text x="374" y="344" text-anchor="middle" font-size="12" font-weight="700" fill="#4ade80" font-family="Syne">Nendaz</text>
           <text x="374" y="357" text-anchor="middle" font-size="8" fill="#2d8a4a" font-family="Syne">6 500 hab. · 35 min TP</text>
         </g>
 
         <g id="zone-ayent" class="zone-g" data-zone="ayent" onclick="selZone('ayent')">
-          <ellipse cx="562" cy="137" rx="56" ry="36" fill="#0d1a0d" opacity=".9" class="zf"/>
+          <ellipse cx="562" cy="137" rx="56" ry="36" fill="#122212" opacity=".9" class="zf"/>
           <ellipse cx="562" cy="137" rx="56" ry="36" stroke="#16a34a" stroke-width="1.2" fill="none" opacity=".5"/>
           <text x="562" y="132" text-anchor="middle" font-size="12" font-weight="700" fill="#4ade80" font-family="Syne">Ayent</text>
           <text x="562" y="146" text-anchor="middle" font-size="8" fill="#2d8a4a" font-family="Syne">4 500 hab. · 28 min TP</text>
         </g>
 
         <g id="zone-veysonnaz" class="zone-g" data-zone="veysonnaz" onclick="selZone('veysonnaz')">
-          <ellipse cx="562" cy="315" rx="48" ry="30" fill="#0d1a0d" opacity=".9" class="zf"/>
+          <ellipse cx="562" cy="315" rx="48" ry="30" fill="#122212" opacity=".9" class="zf"/>
           <ellipse cx="562" cy="315" rx="48" ry="30" stroke="#16a34a" stroke-width="1" fill="none" opacity=".4"/>
           <text x="562" y="310" text-anchor="middle" font-size="10" font-weight="700" fill="#4ade80" font-family="Syne">Veysonnaz</text>
           <text x="562" y="323" text-anchor="middle" font-size="8" fill="#2d8a4a" font-family="Syne">1 200 hab. · 32 min</text>
         </g>
 
         <g id="zone-riddes" class="zone-g" data-zone="riddes" onclick="selZone('riddes')">
-          <ellipse cx="174" cy="318" rx="46" ry="28" fill="#0d1a0d" opacity=".85" class="zf"/>
+          <ellipse cx="174" cy="318" rx="46" ry="28" fill="#122212" opacity=".85" class="zf"/>
           <ellipse cx="174" cy="318" rx="46" ry="28" stroke="#16a34a" stroke-width=".8" fill="none" opacity=".3"/>
           <text x="174" y="313" text-anchor="middle" font-size="10" font-weight="600" fill="#2d8a4a" font-family="Syne">Riddes</text>
           <text x="174" y="326" text-anchor="middle" font-size="8" fill="#1d5a32" font-family="Syne">5 500 hab. · 25 min</text>
@@ -984,7 +984,7 @@ const PERSONAS = [
   {id:'p1', e:'🏢',n:'Pendulaire',       inc:'moyen', vot:28,ps:.50,sr:.80,ta:.60,cd:.70,zone:'centre',tw:'peak',  dur:'long', alts:['tp','covoit']},
   {id:'p2', e:'🛍',n:'Client commerce',  inc:'moyen', vot:22,ps:.70,sr:.20,ta:.50,cd:.50,zone:'centre',tw:'offpk', dur:'short',alts:['tp']},
   {id:'p3', e:'👷',n:'Ouvrier Conthey',  inc:'faible',vot:18,ps:.85,sr:.75,ta:.30,cd:.90,zone:'emploi',tw:'peak',  dur:'long', alts:['covoit']},
-  {id:'p4', e:'👩‍⚕️',n:'Soignante',      inc:'moyen', vot:32,ps:.40,sr:.95,ta:.40,cd:.85,zone:'centre',tw:'peak',  dur:'short',alts:['taxi']},
+  {id:'p4', e:'🏥',n:'Soignante',      inc:'moyen', vot:32,ps:.40,sr:.95,ta:.40,cd:.85,zone:'centre',tw:'peak',  dur:'short',alts:['taxi']},
   {id:'p5', e:'🎓',n:'Étudiant',          inc:'faible',vot:12,ps:.90,sr:.30,ta:.85,cd:.20,zone:'gare',  tw:'peak',  dur:'long', alts:['tp']},
   {id:'p6', e:'👴',n:'Senior',            inc:'faible',vot:15,ps:.80,sr:.40,ta:.55,cd:.60,zone:'centre',tw:'offpk', dur:'short',alts:['tp','taxi']},
   {id:'p7', e:'🚛',n:'Livreur',           inc:'moyen', vot:24,ps:.50,sr:1.0,ta:.00,cd:1.0,zone:'centre',tw:'peak',  dur:'short',alts:[]},
@@ -1181,7 +1181,6 @@ function updatePIP(sc){
   document.getElementById('pip-r').className='pip-v '+(dr>=0?'g':'r');
   document.getElementById('pip-e').textContent=de>0?`+${de} profil(s)`:'Stable';
   document.getElementById('pip-e').className='pip-v '+(de>0?'r':'g');
-  const sc=getSc();
   const notes=[];
   if(sc.pk>4) notes.push('Tarif pointe élevé → fort signal modal');
   else if(sc.pk<2.5) notes.push('Tarif pointe ≤ actuel → signal insuffisant');
