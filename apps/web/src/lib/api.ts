@@ -14,7 +14,9 @@ async function fetchJSON<T>(url: string, options?: RequestInit): Promise<T> {
   return res.json();
 }
 
-export async function simulate(scenario: Scenario): Promise<{ scenario: Scenario; results: SimulationResults }> {
+export async function simulate(
+  scenario: Scenario
+): Promise<{ scenario: Scenario; results: SimulationResults; trafficData?: TrafficData | null }> {
   return fetchJSON(`${API_BASE}/simulate`, {
     method: 'POST',
     body: JSON.stringify({ scenario }),
@@ -32,7 +34,10 @@ export async function fetchInsights(
   });
 }
 
-export async function fetchActions(scenario: Scenario, results: SimulationResults): Promise<ActionsResponse> {
+export async function fetchActions(
+  scenario: Scenario,
+  results: SimulationResults
+): Promise<ActionsResponse> {
   return fetchJSON(`${API_BASE}/actions`, {
     method: 'POST',
     body: JSON.stringify({ scenario, results }),
@@ -51,10 +56,45 @@ export async function fetchReport(
   });
 }
 
-export async function fetchData(): Promise<{ zones: any; parking: any[]; tp: any[]; personas: any[] }> {
+export async function fetchData(): Promise<{
+  zones: any;
+  parking: any[];
+  tp: any[];
+  personas: any[];
+  meta?: { tomtomLive: boolean };
+}> {
   return fetchJSON(`${API_BASE}/data`);
 }
 
-export async function healthCheck(): Promise<{ status: string; ai: boolean; kv: boolean }> {
+export async function healthCheck(): Promise<{
+  status: string;
+  ai: boolean;
+  kv: boolean;
+  tomtom: boolean;
+}> {
   return fetchJSON(`${API_BASE}/health`);
+}
+
+// ─── TomTom Traffic Flow ──────────────────────────────────────────────────────
+export interface TrafficData {
+  connected: boolean;
+  source?: string;
+  timestamp?: string;
+  area?: string;
+  currentSpeed?: number;
+  freeFlowSpeed?: number;
+  confidence?: number;
+  congestionIdx?: number;
+  severity?: 'fluide' | 'modéré' | 'dense' | 'bloqué';
+  note?: string;
+  error?: string;
+}
+
+export async function fetchTrafficFlow(): Promise<TrafficData> {
+  try {
+    const res = await fetch(`${API_BASE}/traffic/flow`);
+    return res.json();
+  } catch (e: any) {
+    return { connected: false, error: e?.message || 'Erreur réseau' };
+  }
 }
