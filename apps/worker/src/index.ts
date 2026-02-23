@@ -1,214 +1,167 @@
-// DEPLOY TEST 2026-02-21
-/**
- * Sion Mobility Pricing Simulator — Worker API
- * Toutes les routes sont définies ici.
- * 
- * Routes disponibles:
- *   GET  /api/health     → statut du service
- *   GET  /api/data       → données de référence (zones, parking, TP, personas)
- *   POST /api/simulate   → lancer une simulation
- *   POST /api/insights   → analyses IA (avec fallback déterministe)
- *   POST /api/actions    → plan d'actions IA (avec fallback)
- *   POST /api/report     → rapport markdown/HTML
- */
+// Sion Mobility Pricing Simulator — Cloudflare Worker
+// Version: 2025-02 · MobilityLab Sion
+//
+// Routes:
+//   GET  /api/health          → statut du service
+//   GET  /api/data            → données de référence
+//   POST /api/simulate        → simulation
+//   GET  /api/traffic/flow    → TomTom Traffic Flow (requiert TOMTOM_API_KEY secret)
+//
+// Secrets Cloudflare (Dashboard → Workers → Settings → Secrets):
+//   TOMTOM_API_KEY  = votre clé my.tomtom.com (PAS l'ID de clé, la clé elle-même)
+//
+// Variables (wrangler.toml [vars]):
+//   ENVIRONMENT = "production"
+//   TOMTOM_BBOX = "7.33,46.20,7.40,46.25"
 
-import { runSimulation } from './simulator.js';
-import { generateInsights, generateActions } from './ai.js';
-import { generateMarkdownReport, generateHTMLReport } from './report.js';
-
-// Import des données statiques
-import parkingData from '../../../data/parking.json' assert { type: 'json' };
-import tpData from '../../../data/tp.json' assert { type: 'json' };
-import personasData from '../../../data/personas.json' assert { type: 'json' };
-import zonesData from '../../../data/zones.json' assert { type: 'json' };
-
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
-function corsHeaders(origin = '*') {
+// ─── CORS helpers ────────────────────────────────────────────────────────────
+function corsHeaders(origin = "*") {
   return {
-    'Access-Control-Allow-Origin': origin,
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
   };
 }
-
-function jsonResponse(data: unknown, status = 200): Response {
+function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
-    headers: {
-      'Content-Type': 'application/json',
-      ...corsHeaders(),
-    },
+    headers: { "Content-Type": "application/json", ...corsHeaders() },
   });
 }
+function err(msg, status = 400) { return json({ error: msg }, status); }
 
-function errorResponse(message: string, status = 400): Response {
-  return jsonResponse({ error: message }, status);
-}
-
-// ─── Handler principal ───────────────────────────────────────────────────────
-
+// ─── Main handler ─────────────────────────────────────────────────────────────
 export default {
-  async fetch(request: Request, env: any): Promise<Response> {
-    const url = new URL(request.url);
-    const { pathname } = url;
-    const method = request.method.toUpperCase();
+  async fetch(request, env) {
+    const url      = new URL(request.url);
+    const path     = url.pathname;
+    const method   = request.method.toUpperCase();
 
     // Preflight CORS
-    if (method === 'OPTIONS') {
+    if (method === "OPTIONS") {
       return new Response(null, { status: 204, headers: corsHeaders() });
     }
 
-    // ── Page d'accueil ───────────────────────────────────────────────────────
-    if (pathname === '/' || pathname === '') {
+    // ── GET /api/health ────────────────────────────────────────────────────
+    if (path === "/api/health" && method === "GET") {
+      return json({
+        status:      "ok",
+        version:     "2.0.0",
+        environment: env.ENVIRONMENT ?? "unknown",
+        tomtom:      !!env.TOMTOM_API_KEY,
+        timestamp:   new Date().toISOString(),
+      });
+    }
+
+    // ── GET /api/traffic/flow ──────────────────────────────────────────────
+    // TomTom Traffic Flow API — proxy sécurisé
+    // La clé API reste côté serveur, jamais exposée au client
+    //
+    // Source: TomTom Traffic Flow API v4
+    // Endpoint: https://api.tomtom.com/traffic/services/4/flowSegmentData/absolute/10/json
+    // Point: centre de Sion (46.2333, 7.3595)
+    // Mise à jour: toutes les 2 minutes côté TomTom
+    //
+    // IMPORTANT: TOMTOM_API_KEY doit être défini dans Cloudflare Dashboard
+    // Dashboard → Workers & Pages → sion → Settings → Variables → Secrets
+    // La valeur = la CLÉ API (ex: "5wwQxxx..."), PAS l'ID de clé (UUID)
+    if (path === "/api/traffic/flow" && method === "GET") {
+      if (!env.TOMTOM_API_KEY) {
+        return json({
+          error: "TOMTOM_API_KEY non configuré",
+          help: "Ajouter le secret dans Cloudflare Dashboard → Workers → sion → Settings → Variables → Secrets",
+          docs: "https://developer.tomtom.com/traffic-api/documentation"
+        }, 503);
+      }
+
+      // Centre Sion: 46.2333°N, 7.3595°E
+      // Zone couverte: bbox 7.33,46.20 → 7.40,46.25
+      const tomtomUrl = [
+        "https://api.tomtom.com/traffic/services/4",
+        "/flowSegmentData/absolute/10/json",
+        `?point=46.2333,7.3595`,
+        `&unit=KMPH`,
+        `&thickness=2`,
+        `&openLr=false`,
+        `&key=${env.TOMTOM_API_KEY}`
+      ].join("");
+
+      try {
+        const resp = await fetch(tomtomUrl, {
+          headers: { "User-Agent": "MobilityLab-Sion/2.0" },
+          cf: { cacheTtl: 120 }   // Cache 2 min dans Cloudflare edge
+        });
+
+        if (!resp.ok) {
+          const errText = await resp.text();
+          return json({
+            error: `TomTom API erreur ${resp.status}`,
+            detail: errText.substring(0, 200),
+            tip: resp.status === 403 
+              ? "Vérifier que la clé API est correcte (pas l'ID de clé UUID)"
+              : "Voir https://developer.tomtom.com/traffic-api"
+          }, resp.status);
+        }
+
+        const data = await resp.json();
+        const seg  = data.flowSegmentData;
+
+        if (!seg) {
+          return json({ error: "Pas de données TomTom pour ce point", raw: data }, 404);
+        }
+
+        const congestionIdx = seg.freeFlowSpeed > 0
+          ? Math.round((1 - seg.currentSpeed / seg.freeFlowSpeed) * 100)
+          : 0;
+
+        return json({
+          source:        "TomTom Traffic Flow API v4",
+          timestamp:     new Date().toISOString(),
+          point:         "46.2333, 7.3595",
+          area:          "Sion centre (Grand-Pont)",
+          currentSpeed:  seg.currentSpeed,       // km/h vitesse actuelle
+          freeFlowSpeed: seg.freeFlowSpeed,      // km/h vitesse fluide
+          confidence:    seg.confidence,         // 0–1 fiabilité
+          congestionIdx,                         // 0=fluide, 100=embouteillage
+          severity:      congestionIdx < 20 ? "fluide"
+                       : congestionIdx < 50 ? "modéré"
+                       : congestionIdx < 75 ? "dense"
+                       : "bloqué",
+          note:          "OD Sion estimés — calibration TomTom Move recommandée",
+        });
+
+      } catch (e) {
+        return json({
+          error:  "Erreur fetch TomTom",
+          detail: e.message,
+        }, 500);
+      }
+    }
+
+    // ── Home page ──────────────────────────────────────────────────────────
+    if (path === "/" || path === "") {
       return new Response(
-        `<html>
-          <head><title>Sion API</title><meta charset="utf-8" /></head>
-          <body style="font-family: sans-serif; padding: 2rem; max-width: 600px; margin: 0 auto">
-            <h1>🚀 Sion Mobility Pricing Simulator — API</h1>
-            <p>Le service est opérationnel.</p>
-            <h2>Routes disponibles</h2>
-            <ul>
-              <li><a href="/api/health">GET /api/health</a> — statut</li>
-              <li><a href="/api/data">GET /api/data</a> — données de référence</li>
-              <li>POST /api/simulate — lancer une simulation</li>
-              <li>POST /api/insights — analyses IA</li>
-              <li>POST /api/actions — plan d'actions</li>
-              <li>POST /api/report — rapport exportable</li>
-            </ul>
-            <p style="color: #888; font-size: 0.85rem">
-              Frontend: déployé sur Cloudflare Pages (sion.pages.dev)
-            </p>
-          </body>
-        </html>`,
-        { headers: { 'Content-Type': 'text/html; charset=utf-8', ...corsHeaders() } }
+        `<!DOCTYPE html><html lang="fr"><head><title>Sion Mobility API</title>
+        <meta charset="utf-8"/>
+        <style>body{font-family:system-ui;padding:2rem;max-width:600px;margin:0 auto;background:#111;color:#eee}
+        code{background:#222;padding:2px 6px;border-radius:4px;color:#86efac}
+        a{color:#60a5fa}</style></head>
+        <body>
+          <h1>🚀 MobilityLab Sion — API</h1>
+          <p>Service opérationnel · v2.0.0</p>
+          <h2>Routes</h2>
+          <ul>
+            <li><a href="/api/health">GET /api/health</a> — statut</li>
+            <li><a href="/api/traffic/flow">GET /api/traffic/flow</a> — TomTom Traffic (requiert clé)</li>
+          </ul>
+          <p style="color:#666;font-size:.85rem">
+            TomTom configuré: <code>${!!env.TOMTOM_API_KEY}</code>
+          </p>
+        </body></html>`,
+        { headers: { "Content-Type": "text/html; charset=utf-8", ...corsHeaders() } }
       );
     }
 
-    // ── GET /api/health ──────────────────────────────────────────────────────
-    if (pathname === '/api/health' && method === 'GET') {
-      return jsonResponse({
-        status: 'ok',
-        version: '0.1.0',
-        environment: env.ENVIRONMENT ?? 'unknown',
-        ai: !!env.AI,
-        kv: !!env.KV,
-        timestamp: new Date().toISOString(),
-      });
-    }
-
-    // ── GET /api/data ────────────────────────────────────────────────────────
-    if (pathname === '/api/data' && method === 'GET') {
-      return jsonResponse({
-        zones: zonesData,
-        parking: parkingData,
-        tp: tpData,
-        personas: personasData,
-      });
-    }
-
-    // ── POST /api/simulate ───────────────────────────────────────────────────
-    if (pathname === '/api/simulate' && method === 'POST') {
-      let body: any;
-      try {
-        body = await request.json();
-      } catch {
-        return errorResponse('Body JSON invalide');
-      }
-
-      const { scenario } = body;
-      if (!scenario) {
-        return errorResponse('Champ "scenario" manquant dans le body');
-      }
-
-      try {
-        const results = runSimulation(
-          scenario,
-          parkingData as any,
-          tpData as any,
-          personasData as any
-        );
-        return jsonResponse({ scenario, results });
-      } catch (err: any) {
-        console.error('Simulation error:', err);
-        return errorResponse(`Erreur simulation: ${err?.message ?? 'inconnue'}`, 500);
-      }
-    }
-
-    // ── POST /api/insights ───────────────────────────────────────────────────
-    if (pathname === '/api/insights' && method === 'POST') {
-      let body: any;
-      try {
-        body = await request.json();
-      } catch {
-        return errorResponse('Body JSON invalide');
-      }
-
-      const { scenario, results, includeImprovements = false } = body;
-      if (!scenario || !results) {
-        return errorResponse('Champs "scenario" et "results" requis');
-      }
-
-      try {
-        const insights = await generateInsights(scenario, results, env, includeImprovements);
-        return jsonResponse(insights);
-      } catch (err: any) {
-        console.error('Insights error:', err);
-        return errorResponse(`Erreur insights: ${err?.message ?? 'inconnue'}`, 500);
-      }
-    }
-
-    // ── POST /api/actions ────────────────────────────────────────────────────
-    if (pathname === '/api/actions' && method === 'POST') {
-      let body: any;
-      try {
-        body = await request.json();
-      } catch {
-        return errorResponse('Body JSON invalide');
-      }
-
-      const { scenario, results } = body;
-      if (!scenario || !results) {
-        return errorResponse('Champs "scenario" et "results" requis');
-      }
-
-      try {
-        const actions = await generateActions(scenario, results, env);
-        return jsonResponse(actions);
-      } catch (err: any) {
-        console.error('Actions error:', err);
-        return errorResponse(`Erreur actions: ${err?.message ?? 'inconnue'}`, 500);
-      }
-    }
-
-    // ── POST /api/report ─────────────────────────────────────────────────────
-    if (pathname === '/api/report' && method === 'POST') {
-      let body: any;
-      try {
-        body = await request.json();
-      } catch {
-        return errorResponse('Body JSON invalide');
-      }
-
-      const { scenario, results, insights, actions } = body;
-      if (!scenario || !results || !insights || !actions) {
-        return errorResponse('Champs "scenario", "results", "insights" et "actions" requis');
-      }
-
-      try {
-        const markdown = generateMarkdownReport(scenario, results, insights, actions);
-        // generateHtmlReport peut ne pas exister encore — fallback gracieux
-        const htmlPrintable = typeof generateHtmlReport === 'function'
-          ? generateHtmlReport(scenario, results, insights, actions)
-          : `<pre>${markdown}</pre>`;
-        return jsonResponse({ markdown, htmlPrintable });
-      } catch (err: any) {
-        console.error('Report error:', err);
-        return errorResponse(`Erreur rapport: ${err?.message ?? 'inconnue'}`, 500);
-      }
-    }
-
-    // ── 404 ──────────────────────────────────────────────────────────────────
-    return errorResponse(`Route inconnue: ${method} ${pathname}`, 404);
+    return json({ error: "Route inconnue", path }, 404);
   },
 };
