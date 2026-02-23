@@ -1,0 +1,82 @@
+[
+  {
+    "zoneId": "centre",
+    "accessIndex": 0.90,
+    "timeToCenterMin": 0,
+    "peakFreqMin": 10,
+    "offpeakFreqMin": 20,
+    "ticketBaseCHF": 3.2,
+    "offpeakDiscountMax": 0.30,
+    "notes": "Excellent accès TP; bus urbains fréquents"
+  },
+  {
+    "zoneId": "gare",
+    "accessIndex": 0.95,
+    "timeToCenterMin": 8,
+    "peakFreqMin": 8,
+    "offpeakFreqMin": 15,
+    "ticketBaseCHF": 3.2,
+    "offpeakDiscountMax": 0.35,
+    "notes": "Hub TP; connexion directe train + bus"
+  },
+  {
+    "zoneId": "est",
+    "accessIndex": 0.65,
+    "timeToCenterMin": 14,
+    "peakFreqMin": 18,
+    "offpeakFreqMin": 35,
+    "ticketBaseCHF": 3.2,
+    "offpeakDiscountMax": 0.25,
+    "notes": "Quelques lignes; fréquence insuffisante hors pointe"
+  },
+  {
+    "zoneId": "ouest",
+    "accessIndex": 0.55,
+    "timeToCenterMin": 18,
+    "peakFreqMin": 22,
+    "offpeakFreqMin": 45,
+    "ticketBaseCHF": 3.2,
+    "offpeakDiscountMax": 0.20,
+    "notes": "Desserte limitée; marche à pied souvent nécessaire"
+  },
+  {
+    "zoneId": "nord",
+    "accessIndex": 0.45,
+    "timeToCenterMin": 22,
+    "peakFreqMin": 25,
+    "offpeakFreqMin": 50,
+    "ticketBaseCHF": 3.2,
+    "offpeakDiscountMax": 0.20,
+    "notes": "Faible desserte; topographie contraignante"
+  },
+  {
+    "zoneId": "sud",
+    "accessIndex": 0.50,
+    "timeToCenterMin": 16,
+    "peakFreqMin": 20,
+    "offpeakFreqMin": 40,
+    "ticketBaseCHF": 3.2,
+    "offpeakDiscountMax": 0.25,
+    "notes": "Desserte industrielle; TP peu attractif"
+  },
+  {
+    "zoneId": "emploi",
+    "accessIndex": 0.40,
+    "timeToCenterMin": 20,
+    "peakFreqMin": 25,
+    "offpeakFreqMin": 60,
+    "ticketBaseCHF": 3.8,
+    "offpeakDiscountMax": 0.15,
+    "notes": "Zone éloignée; TP peu compétitif sans mesure employeur"
+  },
+  {
+    "zoneId": "peripherie",
+    "accessIndex": 0.25,
+    "timeToCenterMin": 35,
+    "peakFreqMin": 40,
+    "offpeakFreqMin": 90,
+    "ticketBaseCHF": 4.5,
+    "offpeakDiscountMax": 0.10,
+    "notes": "Très faible desserte; dépendance auto structurelle"
+  }
+]

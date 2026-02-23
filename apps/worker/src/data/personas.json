@@ -1,0 +1,242 @@
+[
+  {
+    "id": "p01",
+    "label": "Pendulaire actif",
+    "emoji": "🚗",
+    "description": "Employé habitant la périphérie, trajet quotidien centre-ville pour bureau",
+    "valueOfTimeCHFh": 28,
+    "priceSensitivity": 0.55,
+    "scheduleRigidity": 0.80,
+    "tpAffinity": 0.35,
+    "carDependency": 0.75,
+    "typicalTrip": {
+      "fromZoneId": "peripherie",
+      "toZoneId": "centre",
+      "timeWindow": "peak",
+      "durationType": "long"
+    },
+    "tags": ["pendulaire", "horaires fixes", "longue durée"],
+    "income": "moyen",
+    "alternatives": ["tp", "covoiturage"]
+  },
+  {
+    "id": "p02",
+    "label": "Commerçant livraison",
+    "emoji": "🚐",
+    "description": "Artisan/livreur, multiples arrêts en centre-ville, courte durée par arrêt",
+    "valueOfTimeCHFh": 45,
+    "priceSensitivity": 0.70,
+    "scheduleRigidity": 0.90,
+    "tpAffinity": 0.05,
+    "carDependency": 0.98,
+    "typicalTrip": {
+      "fromZoneId": "sud",
+      "toZoneId": "centre",
+      "timeWindow": "peak",
+      "durationType": "short"
+    },
+    "tags": ["professionnel", "horaires atypiques", "visite courte", "dépendant voiture"],
+    "income": "moyen",
+    "alternatives": []
+  },
+  {
+    "id": "p03",
+    "label": "Visiteur commercial",
+    "emoji": "👔",
+    "description": "Client d'un commerce du centre, visite courte en semaine",
+    "valueOfTimeCHFh": 22,
+    "priceSensitivity": 0.65,
+    "scheduleRigidity": 0.45,
+    "tpAffinity": 0.40,
+    "carDependency": 0.60,
+    "typicalTrip": {
+      "fromZoneId": "est",
+      "toZoneId": "centre",
+      "timeWindow": "offpeak",
+      "durationType": "short"
+    },
+    "tags": ["visite courte", "commerces", "flexibilité modérée"],
+    "income": "moyen",
+    "alternatives": ["tp", "tad"]
+  },
+  {
+    "id": "p04",
+    "label": "Senior dépendant voiture",
+    "emoji": "👴",
+    "description": "Retraité, mobilité réduite, utilise la voiture par nécessité médicale ou pratique",
+    "valueOfTimeCHFh": 15,
+    "priceSensitivity": 0.80,
+    "scheduleRigidity": 0.60,
+    "tpAffinity": 0.20,
+    "carDependency": 0.85,
+    "typicalTrip": {
+      "fromZoneId": "nord",
+      "toZoneId": "centre",
+      "timeWindow": "offpeak",
+      "durationType": "short"
+    },
+    "tags": ["senior", "mobilité réduite", "horaires flexibles", "sensible prix"],
+    "income": "faible",
+    "alternatives": ["taxi-bons", "tad"]
+  },
+  {
+    "id": "p05",
+    "label": "Étudiant TP",
+    "emoji": "🎒",
+    "description": "Étudiant habitant proche gare, utilisateur TP convaincu",
+    "valueOfTimeCHFh": 8,
+    "priceSensitivity": 0.85,
+    "scheduleRigidity": 0.35,
+    "tpAffinity": 0.90,
+    "carDependency": 0.10,
+    "typicalTrip": {
+      "fromZoneId": "gare",
+      "toZoneId": "centre",
+      "timeWindow": "peak",
+      "durationType": "short"
+    },
+    "tags": ["étudiant", "TP convaincu", "budget serré"],
+    "income": "faible",
+    "alternatives": ["tp", "velo"]
+  },
+  {
+    "id": "p06",
+    "label": "Employé zone emploi",
+    "emoji": "🏭",
+    "description": "Travailleur d'une grande entreprise, parking gratuit sur site, aucun incitatif actuel",
+    "valueOfTimeCHFh": 24,
+    "priceSensitivity": 0.30,
+    "scheduleRigidity": 0.85,
+    "tpAffinity": 0.25,
+    "carDependency": 0.88,
+    "typicalTrip": {
+      "fromZoneId": "peripherie",
+      "toZoneId": "emploi",
+      "timeWindow": "peak",
+      "durationType": "long"
+    },
+    "tags": ["horaires fixes", "parking gratuit", "peu sensible prix", "covoiturage potentiel"],
+    "income": "moyen",
+    "alternatives": ["covoiturage"]
+  },
+  {
+    "id": "p07",
+    "label": "Parent école",
+    "emoji": "👨‍👧",
+    "description": "Parent accompagnant enfant à l'école puis travail, trajet contraint",
+    "valueOfTimeCHFh": 30,
+    "priceSensitivity": 0.60,
+    "scheduleRigidity": 0.95,
+    "tpAffinity": 0.30,
+    "carDependency": 0.82,
+    "typicalTrip": {
+      "fromZoneId": "ouest",
+      "toZoneId": "centre",
+      "timeWindow": "peak",
+      "durationType": "short"
+    },
+    "tags": ["horaires fixes", "contrainte familiale", "visite courte"],
+    "income": "moyen",
+    "alternatives": ["tad"]
+  },
+  {
+    "id": "p08",
+    "label": "Teletravailleurs périphérie",
+    "emoji": "💻",
+    "description": "Cadre en télétravail partiel, se déplace 2-3j/semaine en pointe",
+    "valueOfTimeCHFh": 42,
+    "priceSensitivity": 0.35,
+    "scheduleRigidity": 0.40,
+    "tpAffinity": 0.55,
+    "carDependency": 0.50,
+    "typicalTrip": {
+      "fromZoneId": "peripherie",
+      "toZoneId": "centre",
+      "timeWindow": "peak",
+      "durationType": "long"
+    },
+    "tags": ["horaires flexibles", "revenu élevé", "télétravail partiel"],
+    "income": "élevé",
+    "alternatives": ["tp", "covoiturage"]
+  },
+  {
+    "id": "p09",
+    "label": "Soignant hôpital",
+    "emoji": "🏥",
+    "description": "Infirmier/médecin, horaires décalés, urgences, transport en commun inadapté",
+    "valueOfTimeCHFh": 35,
+    "priceSensitivity": 0.50,
+    "scheduleRigidity": 0.98,
+    "tpAffinity": 0.15,
+    "carDependency": 0.90,
+    "typicalTrip": {
+      "fromZoneId": "nord",
+      "toZoneId": "centre",
+      "timeWindow": "offpeak",
+      "durationType": "long"
+    },
+    "tags": ["horaires atypiques", "décalé", "urgent", "taxi-bons potentiel"],
+    "income": "moyen",
+    "alternatives": ["taxi-bons"]
+  },
+  {
+    "id": "p10",
+    "label": "Touriste court séjour",
+    "emoji": "📸",
+    "description": "Visiteur weekend, sensible à la signalétique et au prix de courte durée",
+    "valueOfTimeCHFh": 18,
+    "priceSensitivity": 0.75,
+    "scheduleRigidity": 0.20,
+    "tpAffinity": 0.50,
+    "carDependency": 0.55,
+    "typicalTrip": {
+      "fromZoneId": "peripherie",
+      "toZoneId": "centre",
+      "timeWindow": "offpeak",
+      "durationType": "short"
+    },
+    "tags": ["visiteur", "visite courte", "sensible signalétique"],
+    "income": "moyen",
+    "alternatives": ["tp", "tad"]
+  },
+  {
+    "id": "p11",
+    "label": "Habitant centre sans voiture",
+    "emoji": "🚶",
+    "description": "Résident centre-ville, sans véhicule, TP quotidien, sensible congestion",
+    "valueOfTimeCHFh": 20,
+    "priceSensitivity": 0.40,
+    "scheduleRigidity": 0.50,
+    "tpAffinity": 0.95,
+    "carDependency": 0.02,
+    "typicalTrip": {
+      "fromZoneId": "centre",
+      "toZoneId": "gare",
+      "timeWindow": "peak",
+      "durationType": "short"
+    },
+    "tags": ["sans voiture", "TP dépendant", "qualité espace public"],
+    "income": "moyen",
+    "alternatives": ["tp", "velo"]
+  },
+  {
+    "id": "p12",
+    "label": "Retraité actif périphérie",
+    "emoji": "🌿",
+    "description": "Retraité mobile, conduisant, activités loisirs irrégulières, prix-sensible",
+    "valueOfTimeCHFh": 12,
+    "priceSensitivity": 0.78,
+    "scheduleRigidity": 0.25,
+    "tpAffinity": 0.35,
+    "carDependency": 0.70,
+    "typicalTrip": {
+      "fromZoneId": "peripherie",
+      "toZoneId": "centre",
+      "timeWindow": "offpeak",
+      "durationType": "short"
+    },
+    "tags": ["horaires flexibles", "loisirs", "sensible prix", "senior actif"],
+    "income": "faible",
+    "alternatives": ["tp", "taxi-bons", "tad"]
+  }
+]
