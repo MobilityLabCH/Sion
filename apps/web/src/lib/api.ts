@@ -98,3 +98,12 @@ export async function fetchTrafficFlow(): Promise<TrafficData> {
     return { connected: false, error: e?.message || 'Erreur réseau' };
   }
 }
+export async function fetchTrafficFlow(): Promise<{
+  currentSpeed: number;
+  freeFlowSpeed: number;
+  congestionIdx: number;
+  severity: string;
+  confidence: number;
+}> {
+  return fetchJSON(`${API_BASE}/traffic/flow`);
+}
