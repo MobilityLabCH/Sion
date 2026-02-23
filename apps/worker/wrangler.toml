@@ -3,15 +3,26 @@ main = "src/index.ts"
 compatibility_date = "2024-07-25"
 compatibility_flags = ["nodejs_compat"]
 
-# Workers AI binding
+# Workers AI binding (optionnel pour insights IA)
 [ai]
 binding = "AI"
 
+# Variables publiques (PAS de secrets ici)
 [vars]
-ENVIRONMENT = "production"
+ENVIRONMENT  = "production"
+TOMTOM_BBOX  = "7.33,46.20,7.40,46.25"
 
-# Si tu utilises KV, décommente et mets tes IDs
+# ⚠ SECRETS → Cloudflare Dashboard uniquement
+# Dashboard → Workers & Pages → sion → Settings → Variables → Add secret:
+#   TOMTOM_API_KEY = votre_cle_api_tomtom
+#
+# IMPORTANT: La valeur = la CLÉ API (commence par lettres/chiffres, ~32 chars)
+# PAS l'ID de clé (format UUID: 84f21a82-fc82-483d-a5e2-696a3dcf092d)
+# Pour trouver la clé: my.tomtom.com → Keys → cliquer sur votre clé → Copy API Key
+
+# KV Namespace (si vous voulez persister des scénarios)
+# Décommenter après avoir créé le namespace:
 # [[kv_namespaces]]
 # binding = "KV"
-# id = "TON_KV_ID"
-# preview_id = "TON_KV_PREVIEW_ID"
+# id = "VOTRE_KV_ID"
+# preview_id = "VOTRE_KV_PREVIEW_ID"
