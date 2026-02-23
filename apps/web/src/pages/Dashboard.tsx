@@ -4,6 +4,8 @@ import { useApp } from '../hooks/store';
 import ZoneMap from '../components/ZoneMap.tsx';
 import KPICard from '../components/KPICard.tsx';
 import CategoryPill from '../components/CategoryPill.tsx';
+import { useEffect, useState } from 'react';
+import { fetchTrafficFlow } from '../lib/api';
 
 const SEVERITY_CONFIG = {
   fluide:  { color: 'text-green-600',  bg: 'bg-green-50  border-green-200',  dot: 'bg-green-500',  label: '🟢 Fluide' },
