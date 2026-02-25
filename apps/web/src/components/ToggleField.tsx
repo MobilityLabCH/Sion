@@ -4,13 +4,15 @@ interface ToggleFieldProps {
   value: boolean;
   onChange: (v: boolean) => void;
   badge?: string;
+  icon?: string;
 }
 
-export default function ToggleField({ label, description, value, onChange, badge }: ToggleFieldProps) {
+export default function ToggleField({ label, description, value, onChange, badge, icon }: ToggleFieldProps) {
   return (
     <label className="flex items-center justify-between gap-4 cursor-pointer group">
       <div className="flex-1">
         <div className="flex items-center gap-2">
+          {icon && <span className="text-base">{icon}</span>}
           <span className="text-sm font-medium text-ink">{label}</span>
           {badge && (
             <span className="text-xs font-medium text-accent bg-accent-50 px-2 py-0.5 rounded-full border border-accent-200">
