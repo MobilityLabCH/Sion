@@ -7,10 +7,12 @@ async function fetchJSON<T>(url: string, options?: RequestInit): Promise<T> {
     headers: { 'Content-Type': 'application/json' },
     ...options,
   });
+
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error((err as any).error || `HTTP ${res.status}`);
   }
+
   return res.json();
 }
 
@@ -90,20 +92,32 @@ export interface TrafficData {
   error?: string;
 }
 
+/**
+ * Récupère le trafic live.
+ * Le backend peut renvoyer soit des champs “métriques” (currentSpeed, etc.)
+ * soit une erreur; on unifie tout dans TrafficData.
+ */
 export async function fetchTrafficFlow(): Promise<TrafficData> {
   try {
-    const res = await fetch(`${API_BASE}/traffic/flow`);
-    return res.json();
+    // On utilise fetchJSON pour gérer les erreurs HTTP proprement
+    const data = await fetchJSON<any>(`${API_BASE}/traffic/flow`);
+
+    // Si ton API renvoie déjà exactement TrafficData -> retourne direct
+    // Sinon on essaye d’envelopper en gardant les champs utiles.
+    return {
+      connected: data?.connected ?? true,
+      source: data?.source,
+      timestamp: data?.timestamp,
+      area: data?.area,
+      currentSpeed: data?.currentSpeed,
+      freeFlowSpeed: data?.freeFlowSpeed,
+      confidence: data?.confidence,
+      congestionIdx: data?.congestionIdx,
+      severity: data?.severity,
+      note: data?.note,
+      error: data?.error,
+    } as TrafficData;
   } catch (e: any) {
     return { connected: false, error: e?.message || 'Erreur réseau' };
   }
-}
-export async function fetchTrafficFlow(): Promise<{
-  currentSpeed: number;
-  freeFlowSpeed: number;
-  congestionIdx: number;
-  severity: string;
-  confidence: number;
-}> {
-  return fetchJSON(`${API_BASE}/traffic/flow`);
 }
