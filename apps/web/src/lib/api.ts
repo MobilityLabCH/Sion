@@ -1,8 +1,25 @@
-import type { Scenario, SimulationResults, InsightsResponse, ActionsResponse } from '../types';
+import type {
+  Scenario,
+  SimulationResults,
+  InsightsResponse,
+  ActionsResponse,
+} from '../types';
 
-const API_BASE = import.meta.env.VITE_API_URL || '/api';
+/**
+ * Base API
+ * - En prod : appelle directement le Worker Cloudflare
+ * - En local : tu peux toujours surcharger avec VITE_API_URL si besoin
+ */
+const API_BASE =
+  import.meta.env.VITE_API_URL ||
+  'https://sion.ericimstepf.workers.dev/api';
 
-async function fetchJSON<T>(url: string, options?: RequestInit): Promise<T> {
+/* ─── Helper fetch JSON ────────────────────────────────────────────────────── */
+
+async function fetchJSON<T>(
+  url: string,
+  options?: RequestInit
+): Promise<T> {
   const res = await fetch(url, {
     headers: { 'Content-Type': 'application/json' },
     ...options,
@@ -16,7 +33,8 @@ async function fetchJSON<T>(url: string, options?: RequestInit): Promise<T> {
   return res.json();
 }
 
-// ─── TomTom Traffic Flow ──────────────────────────────────────────────────────
+/* ─── TomTom Traffic Flow ──────────────────────────────────────────────────── */
+
 export interface TrafficData {
   connected: boolean;
   source?: string;
@@ -31,14 +49,22 @@ export interface TrafficData {
   error?: string;
 }
 
+/* ─── Simulation ───────────────────────────────────────────────────────────── */
+
 export async function simulate(
   scenario: Scenario
-): Promise<{ scenario: Scenario; results: SimulationResults; trafficData?: TrafficData | null }> {
+): Promise<{
+  scenario: Scenario;
+  results: SimulationResults;
+  trafficData?: TrafficData | null;
+}> {
   return fetchJSON(`${API_BASE}/simulate`, {
     method: 'POST',
     body: JSON.stringify({ scenario }),
   });
 }
+
+/* ─── Insights ─────────────────────────────────────────────────────────────── */
 
 export async function fetchInsights(
   scenario: Scenario,
@@ -51,6 +77,8 @@ export async function fetchInsights(
   });
 }
 
+/* ─── Actions ──────────────────────────────────────────────────────────────── */
+
 export async function fetchActions(
   scenario: Scenario,
   results: SimulationResults
@@ -60,6 +88,8 @@ export async function fetchActions(
     body: JSON.stringify({ scenario, results }),
   });
 }
+
+/* ─── Report ───────────────────────────────────────────────────────────────── */
 
 export async function fetchReport(
   scenario: Scenario,
@@ -73,6 +103,8 @@ export async function fetchReport(
   });
 }
 
+/* ─── Static data ──────────────────────────────────────────────────────────── */
+
 export async function fetchData(): Promise<{
   zones: any;
   parking: any[];
@@ -83,6 +115,8 @@ export async function fetchData(): Promise<{
   return fetchJSON(`${API_BASE}/data`);
 }
 
+/* ─── Health ───────────────────────────────────────────────────────────────── */
+
 export async function healthCheck(): Promise<{
   status: string;
   ai: boolean;
@@ -92,18 +126,12 @@ export async function healthCheck(): Promise<{
   return fetchJSON(`${API_BASE}/health`);
 }
 
-/**
- * Récupère le trafic live.
- * Le backend peut renvoyer soit des champs “métriques” (currentSpeed, etc.)
- * soit une erreur; on unifie tout dans TrafficData.
- */
+/* ─── TomTom live traffic ──────────────────────────────────────────────────── */
+
 export async function fetchTrafficFlow(): Promise<TrafficData> {
   try {
-    // On utilise fetchJSON pour gérer les erreurs HTTP proprement
     const data = await fetchJSON<any>(`${API_BASE}/traffic/flow`);
 
-    // Si ton API renvoie déjà exactement TrafficData -> retourne direct
-    // Sinon on essaye d’envelopper en gardant les champs utiles.
     return {
       connected: data?.connected ?? true,
       source: data?.source,
@@ -116,8 +144,11 @@ export async function fetchTrafficFlow(): Promise<TrafficData> {
       severity: data?.severity,
       note: data?.note,
       error: data?.error,
-    } as TrafficData;
+    };
   } catch (e: any) {
-    return { connected: false, error: e?.message || 'Erreur réseau' };
+    return {
+      connected: false,
+      error: e?.message || 'Erreur réseau',
+    };
   }
 }
