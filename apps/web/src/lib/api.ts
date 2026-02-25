@@ -16,6 +16,21 @@ async function fetchJSON<T>(url: string, options?: RequestInit): Promise<T> {
   return res.json();
 }
 
+// ─── TomTom Traffic Flow ──────────────────────────────────────────────────────
+export interface TrafficData {
+  connected: boolean;
+  source?: string;
+  timestamp?: string;
+  area?: string;
+  currentSpeed?: number;
+  freeFlowSpeed?: number;
+  confidence?: number;
+  congestionIdx?: number;
+  severity?: 'fluide' | 'modéré' | 'dense' | 'bloqué';
+  note?: string;
+  error?: string;
+}
+
 export async function simulate(
   scenario: Scenario
 ): Promise<{ scenario: Scenario; results: SimulationResults; trafficData?: TrafficData | null }> {
@@ -75,21 +90,6 @@ export async function healthCheck(): Promise<{
   tomtom: boolean;
 }> {
   return fetchJSON(`${API_BASE}/health`);
-}
-
-// ─── TomTom Traffic Flow ──────────────────────────────────────────────────────
-export interface TrafficData {
-  connected: boolean;
-  source?: string;
-  timestamp?: string;
-  area?: string;
-  currentSpeed?: number;
-  freeFlowSpeed?: number;
-  confidence?: number;
-  congestionIdx?: number;
-  severity?: 'fluide' | 'modéré' | 'dense' | 'bloqué';
-  note?: string;
-  error?: string;
 }
 
 /**
