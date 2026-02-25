@@ -1,3 +1,41 @@
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+};
+
+function jsonResponse(data: unknown, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      ...corsHeaders,
+    },
+  });
+}
+
+export default {
+  async fetch(request: Request, env: any, ctx: any) {
+    // ✅ Préflight CORS
+    if (request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: corsHeaders });
+    }
+
+    const url = new URL(request.url);
+    const pathname = url.pathname;
+
+    // ... tes routes
+
+    // Exemple:
+    if (pathname === "/api/traffic/flow" && request.method === "GET") {
+      // ton code TomTom...
+      return jsonResponse({ connected: true, /* ... */ });
+    }
+
+    return jsonResponse({ error: "Not found" }, 404);
+  },
+};
+
 // Sion Mobility Pricing Simulator — Cloudflare Worker
 // Version: 3.0.0 · MobilityLab Sion
 //
