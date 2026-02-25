@@ -1,179 +1,106 @@
-# Guide de déploiement — Compte Cloudflare `ericimstepf`
+# Guide de déploiement — Sion Mobility Pricing Simulator
 
-> Worker existant: **sion** · URL cible: `https://sion.ericimstepf.workers.dev`  
-> GitHub: `https://github.com/MobilityLabCH/Sion`
+## ✅ Corrections appliquées (v3.1)
+
+- **SliderField.tsx** : ajout des props `referenceValue` et `referenceLabel` (erreur TS2322 corrigée)
+- **ToggleField.tsx** : ajout de la prop `icon` (erreur TS2322 corrigée)
+- **api.ts** : déplacement de l'interface `TrafficData` avant son utilisation
 
 ---
 
-## Étape 1 — Pousser le code sur GitHub
+## 🔑 Problème TomTom — CAUSE RACINE
 
+Votre clé TomTom est configurée dans le **mauvais endroit** sur Cloudflare.
+
+### ❌ INCORRECT (ce que vous avez fait)
+```
+Cloudflare → Workers & Pages → "sion" icône △ (Pages) → Settings → Variables
+→ sion-cet.pages.dev
+```
+Cette clé n'est **pas accessible** par le Worker qui fait les appels TomTom.
+
+### ✅ CORRECT (ce qu'il faut faire)
+
+**Étape 1 : Ouvrir le bon Worker**
+```
+dash.cloudflare.com → Workers & Pages
+→ Chercher "sion" avec l'icône ⬡ (hexagone = Worker)
+→ Pas l'icône △ (triangle = Pages)
+→ L'URL sera : sion.ericimstepf.workers.dev
+```
+
+**Étape 2 : Ajouter la clé**
+```
+→ Settings → Variables and Secrets → + Add variable
+→ Type: Secret
+→ Name: TOMTOM_API_KEY
+→ Value: [votre clé API TomTom]
+```
+
+**Étape 3 : Obtenir la BONNE clé TomTom**
+```
+my.tomtom.com → Se connecter → Keys
+→ Cliquer sur "My First API key" (ou votre clé)
+→ Bouton "Copy API Key" (chaîne de ~32 caractères)
+
+⚠️  NE PAS copier l'UUID/ID du projet (format xxxxxxxx-xxxx-xxxx-xxxx)
+✅  Copier la vraie clé API (format alphanumérique)
+```
+
+### Vérification
+Après avoir configuré la clé dans le Worker, visitez :
+```
+https://sion.ericimstepf.workers.dev/api/health
+```
+Vous devez voir `"tomtom": true`.
+
+Puis testez le flux trafic :
+```
+https://sion.ericimstepf.workers.dev/api/traffic/flow
+```
+
+---
+
+## 🚀 Déploiement Cloudflare Pages (frontend)
+
+Le frontend se déploie automatiquement depuis GitHub sur la branche `main`.
+
+**Commande de build dans Cloudflare Pages Settings :**
 ```bash
-cd /chemin/vers/dossier/sion-mvp
+cd apps/web && npm install && npm run build
+```
 
-git init
-git add .
-git commit -m "feat: MVP Sion Mobility Pricing Simulator v0.1"
-git branch -M main
-git remote add origin https://github.com/MobilityLabCH/Sion.git
-git push -u origin main
+**Output directory :** `apps/web/dist`
+
+**Variable d'environnement (dans Pages, pas le Worker) :**
+```
+VITE_API_URL = https://sion.ericimstepf.workers.dev/api
 ```
 
 ---
 
-## Étape 2 — Créer le namespace KV
-
-```bash
-cd apps/worker
-
-# Installer les dépendances d'abord
-npm install
-
-# Créer le namespace production
-npx wrangler kv:namespace create SION_KV
-# → Retourne: { binding: "KV", id: "abc123..." }
-
-# Créer le namespace preview (dev local)
-npx wrangler kv:namespace create SION_KV --preview
-# → Retourne: { binding: "KV", preview_id: "xyz456..." }
-```
-
-Ouvrir `apps/worker/wrangler.toml` et **remplacer** les placeholders :
-
-```toml
-[[kv_namespaces]]
-binding = "KV"
-id = "abc123..."          # ← coller votre id ici
-preview_id = "xyz456..."  # ← coller votre preview_id ici
-```
-
----
-
-## Étape 3 — Déployer le Worker
+## 🔧 Déploiement Worker (backend)
 
 ```bash
 cd apps/worker
 npx wrangler deploy
 ```
 
-**Résultat attendu :**
-```
-✅ Deployed sion
-   https://sion.ericimstepf.workers.dev
-```
-
-**Tester immédiatement :**
-```bash
-curl https://sion.ericimstepf.workers.dev/api/health
-# → {"status":"ok","version":"0.1.0","ai":true,"kv":true}
-
-curl https://sion.ericimstepf.workers.dev/api/data
-# → {zones: {...}, parking: [...], tp: [...], personas: [...]}
-```
+Ou via Cloudflare → Workers → "sion" (⬡) → Deploy.
 
 ---
 
-## Étape 4 — Déployer le Frontend sur Cloudflare Pages
+## 🏗 Structure des deux entités Cloudflare
 
-### Option A — Via Dashboard (recommandée)
-
-1. Aller sur [dash.cloudflare.com](https://dash.cloudflare.com) → **Workers & Pages**
-2. Cliquer **Create** → onglet **Pages**
-3. **Connect to Git** → sélectionner `MobilityLabCH/Sion`
-4. Configurer le build :
-
-| Paramètre | Valeur |
-|-----------|--------|
-| Framework preset | **Vite** |
-| Build command | `npm run build:web` |
-| Build output directory | `apps/web/dist` |
-| Root directory | *(laisser vide)* |
-
-5. **Environment variables** → Add variable :
-
-| Variable | Valeur |
-|----------|--------|
-| `VITE_API_URL` | `https://sion.ericimstepf.workers.dev/api` |
-
-6. Cliquer **Save and Deploy**
-
-### Option B — Via CLI
-
-```bash
-# Depuis la racine du projet
-npm run build:web
-
-cd apps/web
-VITE_API_URL=https://sion.ericimstepf.workers.dev/api npx wrangler pages deploy dist \
-  --project-name=sion-mobility \
-  --commit-message="MVP v0.1"
 ```
-
----
-
-## Étape 5 — Vérification finale
-
-Une fois les deux déployés :
-
-```bash
-# Worker
-curl https://sion.ericimstepf.workers.dev/api/health
-
-# Simulation test
-curl -X POST https://sion.ericimstepf.workers.dev/api/simulate \
-  -H "Content-Type: application/json" \
-  -d '{
-    "scenario": {
-      "centrePeakPriceCHFh": 4.0,
-      "centreOffpeakPriceCHFh": 1.5,
-      "peripheriePeakPriceCHFh": 0.0,
-      "peripherieOffpeakPriceCHFh": 0.0,
-      "progressiveSlopeFactor": 1.5,
-      "tpOffpeakDiscountPct": 20,
-      "enableCovoiturage": true,
-      "enableTAD": false,
-      "enableTaxiBons": true,
-      "objective": "reduce-peak-car"
-    }
-  }'
+Cloudflare Workers & Pages
+├── sion (△ Pages)        → sion-cet.pages.dev
+│   ├── Build: apps/web
+│   ├── Variable: VITE_API_URL
+│   └── ⚠️  PAS de TOMTOM_API_KEY ici
+│
+└── sion (⬡ Worker)       → sion.ericimstepf.workers.dev
+    ├── Source: apps/worker
+    ├── Secret: TOMTOM_API_KEY  ← ICI ✅
+    └── Binding: AI (Workers AI)
 ```
-
----
-
-## Bindings Cloudflare à vérifier
-
-Dans le Dashboard Cloudflare → Workers → **sion** → **Settings** → **Bindings** :
-
-| Binding | Type | Valeur |
-|---------|------|--------|
-| `AI` | Workers AI | *(automatique)* |
-| `KV` | KV Namespace | `SION_KV` |
-
-Si les bindings ne sont pas visibles après `wrangler deploy`, les ajouter manuellement via le Dashboard.
-
----
-
-## Développement local
-
-```bash
-# À la racine
-npm install
-
-# Lancer frontend + worker en parallèle
-npm run dev
-# Frontend: http://localhost:5173
-# Worker:   http://localhost:8787
-
-# En local, Workers AI n'est pas disponible →
-# le code bascule automatiquement sur les fallbacks déterministes
-# (aucune clé ni compte requis pour développer)
-```
-
----
-
-## Structure des URLs finales
-
-| Service | URL |
-|---------|-----|
-| Frontend | `https://sion-mobility.pages.dev` (ou domaine custom) |
-| API Worker | `https://sion.ericimstepf.workers.dev/api` |
-| Health check | `https://sion.ericimstepf.workers.dev/api/health` |
