@@ -1,16 +1,3 @@
-// deploy: fix CORS — 2025
-```
-
-Puis **Commit changes** → Cloudflare détecte le changement et redéploie automatiquement le Worker avec le bon code (qui a déjà les CORS corrects dans le fichier `index.ts` actuel du repo).
-
----
-
-**Pourquoi ça marchera :** le Worker dans votre repo a déjà `corsHeaders()` et le handler `OPTIONS` corrects. Il n'a juste jamais été redéployé depuis 5 jours. Un commit sur ce fichier force Cloudflare à relancer le build.
-
-**Vérification après 2 minutes :**
-```
-https://sion.ericimstepf.workers.dev/api/traffic/flow
-
 // Sion Mobility Pricing Simulator — Cloudflare Worker
 // Version: 3.0.0 · MobilityLab Sion
 
@@ -127,7 +114,6 @@ export default {
       try {
         const results = runSimulation(scenario, parkingData, tpData, personasData);
 
-        // Optionnel: enrichissement TomTom
         let trafficData: any = null;
         if (env.TOMTOM_API_KEY) {
           try {
@@ -140,7 +126,6 @@ export default {
                   seg.freeFlowSpeed > 0
                     ? Math.max(0, Math.round((1 - seg.currentSpeed / seg.freeFlowSpeed) * 100))
                     : 0;
-
                 trafficData = {
                   connected: true,
                   source: 'TomTom Traffic Flow API v4',
