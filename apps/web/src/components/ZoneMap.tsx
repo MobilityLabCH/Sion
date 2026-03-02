@@ -15,6 +15,11 @@ const CATEGORY_COLORS: Record<string, string> = {
   default: '#94a3b8',
 };
 
+// ✅ FIX: URL absolue vers le Worker (plus de /api/data relatif qui cassait)
+const API_BASE =
+  (import.meta as any).env?.VITE_API_URL ||
+  'https://sion.ericimstepf.workers.dev/api';
+
 export default function ZoneMap({ zoneResults, height = '420px', className = '' }: ZoneMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -58,8 +63,8 @@ export default function ZoneMap({ zoneResults, height = '420px', className = '' 
     if (!map) return;
 
     const updateLayers = () => {
-      // Load zones GeoJSON
-      fetch('/api/data')
+      // ✅ FIX: fetch vers le Worker Cloudflare, pas une URL relative
+      fetch(`${API_BASE}/data`)
         .then(r => r.json())
         .then((data: any) => {
           const geojson = data.zones;
