@@ -1,116 +1,82 @@
 [
   {
-    "id": "planta",
     "zoneId": "centre",
-    "name": "Parking de la Planta",
-    "address": "Place du Midi, Sion",
-    "capacity": 570,
-    "capacityPMR": 18,
+    "capacity": 1424,
     "basePriceCHFh": 3.0,
     "peakMultiplier": 1.0,
-    "offpeakMultiplier": 0.5,
-    "freeFirstMinutes": 60,
-    "walkDistanceM": 180,
-    "frictionIndex": 0.65,
-    "source": "sion.ch · 15.07.2024",
-    "license": "OGD-CH",
-    "confidence": 0.95,
-    "notes": "Principal parking couvert centre-ville. 1h gratuite. Tarif 3.00 CHF/h dès 2ème heure.",
-    "rules": [
-      { "dayType": "weekday", "startHour": 7, "endHour": 18, "pricePerHour": 3.0, "freeFirstMin": 60, "maxDurationH": null, "note": "Tarif normal semaine" },
-      { "dayType": "friday",  "startHour": 7, "endHour": 17, "pricePerHour": 3.0, "freeFirstMin": 60, "maxDurationH": null, "note": "Tarif normal vendredi matin" },
-      { "dayType": "friday",  "startHour": 17,"endHour": 24, "pricePerHour": 0.0, "freeFirstMin": null,"maxDurationH": null, "note": "GRATUIT dès 17h (arrêté Conseil Communal 2023)" },
-      { "dayType": "saturday","startHour": 0, "endHour": 24, "pricePerHour": 0.0, "freeFirstMin": null,"maxDurationH": null, "note": "GRATUIT toute la journée jusqu'à minuit (arrêté 2023)" },
-      { "dayType": "sunday",  "startHour": 0, "endHour": 24, "pricePerHour": 0.0, "freeFirstMin": null,"maxDurationH": null, "note": "Gratuit dimanche" }
-    ]
+    "offpeakMultiplier": 1.0,
+    "longStayShare": 0.40,
+    "frictionIndex": 0.68,
+    "notes": "Planta (562 pl.) + Scex (658 pl.) + Cible (204 pl.). 1h gratuite puis CHF 3.00/h (h2→h11), CHF 0.20/h au-delà. Gratuit ven. 17h→sam. 24h et dimanches. Source: sion.ch PDFs 2024-08-2025."
   },
   {
-    "id": "scex",
-    "zoneId": "centre",
-    "name": "Parking du Scex",
-    "address": "Rue du Scex 12, Sion",
-    "capacity": 658,
-    "capacityPMR": 22,
-    "basePriceCHFh": 3.0,
-    "peakMultiplier": 1.0,
-    "offpeakMultiplier": 0.5,
-    "freeFirstMinutes": 60,
-    "walkDistanceM": 210,
-    "frictionIndex": 0.60,
-    "source": "sion.ch · 11.08.2025",
-    "license": "OGD-CH",
-    "confidence": 0.95,
-    "notes": "Parking couvert centre-ville. Même règles que Planta. 1h gratuite.",
-    "rules": [
-      { "dayType": "weekday", "startHour": 7, "endHour": 18, "pricePerHour": 3.0, "freeFirstMin": 60, "maxDurationH": null, "note": "Tarif normal semaine" },
-      { "dayType": "friday",  "startHour": 7, "endHour": 17, "pricePerHour": 3.0, "freeFirstMin": 60, "maxDurationH": null, "note": "Tarif normal vendredi matin" },
-      { "dayType": "friday",  "startHour": 17,"endHour": 24, "pricePerHour": 0.0, "freeFirstMin": null,"maxDurationH": null, "note": "GRATUIT dès 17h (arrêté 2023)" },
-      { "dayType": "saturday","startHour": 0, "endHour": 24, "pricePerHour": 0.0, "freeFirstMin": null,"maxDurationH": null, "note": "GRATUIT toute la journée (arrêté 2023)" },
-      { "dayType": "sunday",  "startHour": 0, "endHour": 24, "pricePerHour": 0.0, "freeFirstMin": null,"maxDurationH": null, "note": "Gratuit dimanche" }
-    ]
-  },
-  {
-    "id": "gare",
     "zoneId": "gare",
-    "name": "Parking Gare CFF",
-    "address": "Place de la Gare, Sion",
-    "capacity": 420,
-    "capacityPMR": 12,
+    "capacity": 300,
     "basePriceCHFh": 2.0,
     "peakMultiplier": 1.0,
-    "offpeakMultiplier": 0.8,
-    "freeFirstMinutes": 0,
-    "walkDistanceM": 620,
-    "frictionIndex": 0.45,
-    "source": "sion.ch · CFF SBB",
-    "license": "OGD-CH",
-    "confidence": 0.80,
-    "notes": "P+R partiel. Navetteurs longue durée dominants. 20% PI CFF.",
-    "rules": [
-      { "dayType": "weekday", "startHour": 0, "endHour": 24, "pricePerHour": 2.0, "freeFirstMin": 0, "maxDurationH": null, "note": "Tarif gare" },
-      { "dayType": "saturday","startHour": 0, "endHour": 24, "pricePerHour": 0.0, "freeFirstMin": null,"maxDurationH": null, "note": "GRATUIT samedi (arrêté 2023)" }
-    ]
+    "offpeakMultiplier": 1.0,
+    "longStayShare": 0.55,
+    "frictionIndex": 0.55,
+    "notes": "Cour de Gare CFF Sion (~300 pl. estimé). Tarif ~CHF 2.00/h estimé. 1h gratuite appliquée par analogie avec parkings municipaux. Source: CFF estimé · conf. 0.70."
   },
   {
-    "id": "pr-west",
-    "zoneId": "peripherie",
-    "name": "P+R Ouest / Châteauneuf",
-    "address": "Route de Riddes, Sion",
-    "capacity": 800,
-    "capacityPMR": 20,
-    "basePriceCHFh": 0.0,
+    "zoneId": "est",
+    "capacity": 397,
+    "basePriceCHFh": 1.5,
+    "peakMultiplier": 1.1,
+    "offpeakMultiplier": 0.95,
+    "longStayShare": 0.30,
+    "frictionIndex": 0.38,
+    "notes": "Roches-Brunes (300 pl., tarif préférentiel) + Vissigen (97 pl.). Tarif préférentiel estimé ~1.50 CHF/h. Source: sion.ch carte mobilité · conf. 0.60."
+  },
+  {
+    "zoneId": "ouest",
+    "capacity": 66,
+    "basePriceCHFh": 1.5,
     "peakMultiplier": 1.0,
     "offpeakMultiplier": 1.0,
-    "freeFirstMinutes": null,
-    "walkDistanceM": 1200,
+    "longStayShare": 0.25,
+    "frictionIndex": 0.30,
+    "notes": "Parking St-Guérin (66 pl., tarif préférentiel estimé). Source: sion.ch carte mobilité · conf. 0.60."
+  },
+  {
+    "zoneId": "nord",
+    "capacity": 282,
+    "basePriceCHFh": 1.5,
+    "peakMultiplier": 1.1,
+    "offpeakMultiplier": 1.0,
+    "longStayShare": 0.20,
     "frictionIndex": 0.25,
-    "source": "sion.ch · estimé",
-    "license": "OGD-CH",
-    "confidence": 0.60,
-    "notes": "P+R gratuit. Navette ou vélo vers centre. Potentiel P+R non exploité.",
-    "rules": [
-      { "dayType": "weekday", "startHour": 0, "endHour": 24, "pricePerHour": 0.0, "freeFirstMin": null, "maxDurationH": null, "note": "Gratuit" }
-    ]
+    "notes": "Parking Nord (282 pl., tarif préférentiel). Source: sion.ch carte mobilité · conf. 0.60."
   },
   {
-    "id": "pr-east",
-    "zoneId": "peripherie",
-    "name": "P+R Est / Uvrier",
-    "address": "Route de Sierre, Sion",
+    "zoneId": "sud",
     "capacity": 600,
-    "capacityPMR": 15,
+    "basePriceCHFh": 0.6,
+    "peakMultiplier": 1.2,
+    "offpeakMultiplier": 0.9,
+    "longStayShare": 0.50,
+    "frictionIndex": 0.28,
+    "notes": "Zone industrielle/commerciale sud (voirie + privé). Tarif estimé faible. Conf. 0.45."
+  },
+  {
+    "zoneId": "emploi",
+    "capacity": 1200,
     "basePriceCHFh": 0.0,
     "peakMultiplier": 1.0,
     "offpeakMultiplier": 1.0,
-    "freeFirstMinutes": null,
-    "walkDistanceM": 1800,
-    "frictionIndex": 0.22,
-    "source": "estimé",
-    "license": "OGD-CH",
-    "confidence": 0.50,
-    "notes": "Stationnement périphérique, accès bus ligne 2.",
-    "rules": [
-      { "dayType": "weekday", "startHour": 0, "endHour": 24, "pricePerHour": 0.0, "freeFirstMin": null, "maxDurationH": null, "note": "Gratuit" }
-    ]
+    "longStayShare": 0.80,
+    "frictionIndex": 0.12,
+    "notes": "Parkings privés entreprises (gratuit employés). Levier tarifaire quasi-nul sans mesure employeur. Conf. 0.50."
+  },
+  {
+    "zoneId": "peripherie",
+    "capacity": 910,
+    "basePriceCHFh": 0.0,
+    "peakMultiplier": 1.0,
+    "offpeakMultiplier": 1.0,
+    "longStayShare": 0.65,
+    "frictionIndex": 0.10,
+    "notes": "P+R Potences (450 pl.) + P+R Stade/Echutes (460 pl.) — GRATUITS. Connexion directe BS 11 toutes les 10 min (pointe). Source: sion.ch / CarPostal image officielle · conf. 0.95."
   }
 ]
