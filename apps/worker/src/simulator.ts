@@ -1,7 +1,7 @@
 import type {
   Scenario, SimulationResults, ZoneResult, PersonaResult,
   ModeSplit, ParkingData, TPData, Persona
-} from './types.js';
+} from './types';
 
 // ─── Constantes moteur ──────────────────────────────────────────────────────
 const SHORT_STAY_H = 1.0;
