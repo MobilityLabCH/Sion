@@ -1,746 +1,666 @@
-// ODSimulator — Carte OD interactive Sion
-// React artifact: charge MapLibre GL depuis CDN
-// Données officielles: sion.ch, CarPostal 2025
+/**
+ * ODSimulator.tsx — Visualisation Origines → Destinations · Sion Mobility
+ * Refonte: captivité voiture par commune, MapLibre depuis npm (plus de CDN).
+ * Chemin: apps/web/src/components/ODSimulator.tsx
+ */
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback } from 'react';
+import maplibregl from 'maplibre-gl';
+import 'maplibre-gl/dist/maplibre-gl.css';
+import { fetchData } from '../lib/api';
 
-// ─── DATA (inline depuis data.ts) ────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
 
-const PARKINGS = [
-  { id:"planta",       name:"Parking de la Planta",         short:"Planta",       coords:[7.3578,46.2330], capacity:562, pmr:18,  type:"central",   priceH:3.0,  firstHFree:true,  walkCentre:3,  freePeriods:["lunch","fri17","sat","sun","night"], source:"sion.ch 15.07.2024", conf:0.97 },
-  { id:"scex",         name:"Parking du Scex",              short:"Scex",         coords:[7.3650,46.2298], capacity:658, pmr:22,  type:"central",   priceH:3.0,  firstHFree:true,  walkCentre:4,  freePeriods:["lunch","fri17","sat","sun","night"], source:"sion.ch 11.08.2025", conf:0.99 },
-  { id:"cible",        name:"Parking de la Cible",          short:"Cible",        coords:[7.3622,46.2345], capacity:204, pmr:8,   type:"central",   priceH:3.0,  firstHFree:false, walkCentre:5,  freePeriods:["fri17","sat","sun"],               source:"sion.ch estimé",    conf:0.70 },
-  { id:"nord",         name:"Parking Nord",                 short:"Nord",         coords:[7.3595,46.2432], capacity:282, pmr:10,  type:"preferred", priceH:1.5,  firstHFree:false, walkCentre:14, freePeriods:["fri17","sat","sun"],               source:"sion.ch préf. estimé",conf:0.60},
-  { id:"roches-brunes",name:"Parking des Roches-Brunes",   short:"Roches-Brunes",coords:[7.3748,46.2368], capacity:300, pmr:12,  type:"preferred", priceH:1.5,  firstHFree:false, walkCentre:10, freePeriods:["fri17","sat","sun"],               source:"sion.ch préf. estimé",conf:0.60},
-  { id:"st-guerin",    name:"Parking St-Guérin",            short:"St-Guérin",    coords:[7.3468,46.2318], capacity:66,  pmr:4,   type:"preferred", priceH:1.5,  firstHFree:false, walkCentre:8,  freePeriods:["fri17","sat","sun"],               source:"sion.ch préf. estimé",conf:0.60},
-  { id:"vissigen",     name:"Parking Vissigen",             short:"Vissigen",     coords:[7.3808,46.2295], capacity:97,  pmr:4,   type:"preferred", priceH:2.0,  firstHFree:false, walkCentre:16, freePeriods:[],                                  source:"sion.ch estimé",    conf:0.55 },
-  { id:"cour-gare",    name:"Cour de Gare / CFF",          short:"Gare CFF",     coords:[7.3525,46.2278], capacity:300, pmr:14,  type:"station",   priceH:2.0,  firstHFree:false, walkCentre:10, freePeriods:["sat","sun"],                       source:"CFF estimé",        conf:0.70 },
-  { id:"pr-potences",  name:"P+R Potences (Sion-Ouest)",   short:"P+R Potences", coords:[7.3318,46.2282], capacity:450, pmr:0,   type:"pr",        priceH:0,    firstHFree:false, walkCentre:25, freePeriods:["always"], busLine:"BS 11", busDest:"Place du Midi", busFreq:10, busTravelMin:12, hasBike:true, source:"sion.ch/CarPostal", conf:0.95 },
-  { id:"pr-stade",     name:"P+R Stade / Échutes (Sion-Est)",short:"P+R Stade",  coords:[7.3888,46.2282], capacity:460, pmr:0,   type:"pr",        priceH:0,    firstHFree:false, walkCentre:20, freePeriods:["always"], busLine:"BS 11", busDest:"Place du Midi", busFreq:10, busTravelMin:10, hasBike:true, source:"sion.ch/CarPostal", conf:0.95 },
-];
-
-const ORIGINS = [
-  { id:"bramois",         name:"Bramois",                 emoji:"🏘", coords:[7.3945,46.2265], distKm:3.5,  pop:4800,
-    bus:[{line:"BS 11",min:10,freqPk:10,freqOff:20,zones:1,fare:2.20,hf:1.50,note:"Direct · isireso zone 1"}], train:[],
-    pRec:"pr-stade",  tp:"BS 11 direct · 10 min · toutes les 10 min" },
-  { id:"chateauneuf",     name:"Châteauneuf-Conthey",    emoji:"🏔", coords:[7.3255,46.2278], distKm:4.8,  pop:7500,
-    bus:[{line:"BS11/331",min:18,freqPk:20,freqOff:30,zones:2,fare:3.20,hf:2.20,note:"Via Gare CFF"}],
-    train:[{op:"RegionAlps",min:8,freq:30,fare:3.20,hf:2.20,note:"Zone 2 isireso · dès déc. 2023"}],
-    pRec:"pr-potences", tp:"Train RegionAlps 8 min · zone 2 isireso" },
-  { id:"saviese",         name:"Savièse",                 emoji:"🍇", coords:[7.3272,46.2545], distKm:5.2,  pop:6800,
-    bus:[{line:"341/342",min:25,freqPk:30,freqOff:60,zones:3,fare:4.20,hf:2.90,note:"Via Mont d'Orge"}], train:[],
-    pRec:"pr-potences", tp:"Bus 341/342 · 25 min · 30 min pointe" },
-  { id:"grimisuat",       name:"Grimisuat",               emoji:"⛰",  coords:[7.3858,46.2528], distKm:6.0,  pop:2800,
-    bus:[{line:"386",min:22,freqPk:30,freqOff:60,zones:3,fare:4.20,hf:2.90,note:"Bus régional 386"}], train:[],
-    pRec:"pr-stade",    tp:"Bus 386 · 22 min · 1×/heure" },
-  { id:"uvrier-leonard",  name:"Uvrier / St-Léonard",    emoji:"🍷", coords:[7.4178,46.2335], distKm:7.5,  pop:5200,
-    bus:[{line:"411",min:18,freqPk:30,freqOff:60,zones:2,fare:3.20,hf:2.20,note:"Bus 411"}],
-    train:[{op:"RegionAlps",min:8,freq:30,fare:3.20,hf:2.20,note:"Zone 2 · train direct"}],
-    pRec:"cour-gare",   tp:"Train 8 min · zone 2 isireso · 30 min" },
-  { id:"arbaz-ayent",     name:"Arbaz / Ayent",           emoji:"🌿", coords:[7.3615,46.2748], distKm:8.5,  pop:4200,
-    bus:[{line:"342",min:35,freqPk:60,freqOff:120,zones:3,fare:4.20,hf:2.90,note:"Bus 342"}], train:[],
-    pRec:null,          tp:"Bus 342 · 35 min · 1×/heure · forte dépendance auto" },
-  { id:"conthey-ardon",   name:"Conthey / Ardon",         emoji:"🏡", coords:[7.3072,46.2248], distKm:7.0,  pop:5500,
-    bus:[{line:"331",min:22,freqPk:30,freqOff:60,zones:3,fare:4.20,hf:2.90,note:"Bus 331 via Conthey"}], train:[],
-    pRec:"pr-potences", tp:"Bus 331 · 22 min · 30 min pointe" },
-  { id:"nendaz",          name:"Basse-Nendaz / Nendaz",   emoji:"⛷",  coords:[7.2985,46.1892], distKm:19.0, pop:6500,
-    bus:[{line:"361/362",min:38,freqPk:30,freqOff:60,zones:4,fare:5.20,hf:3.60,note:"Bus 361/362 via Aproz/Salins"}], train:[],
-    pRec:null,          tp:"Bus 361/362 · 38 min · 30 min pointe" },
-  { id:"veysonnaz",       name:"Veysonnaz / Salins",       emoji:"🎿", coords:[7.3372,46.2018], distKm:14.0, pop:1800,
-    bus:[{line:"363",min:30,freqPk:60,freqOff:120,zones:3,fare:4.20,hf:2.90,note:"Bus 363 Chandoline–Salins"}], train:[],
-    pRec:null,          tp:"Bus 363 · 30 min · 1×/heure" },
-  { id:"sierre",          name:"Sierre / Siders",          emoji:"🚉", coords:[7.5328,46.2965], distKm:17.5, pop:16500,
-    bus:[],
-    train:[{op:"CFF/RegionAlps",min:15,freq:30,fare:5.80,hf:4.00,note:"Train direct"}],
-    pRec:"cour-gare",   tp:"Train CFF 15 min · toutes les 30 min" },
-  { id:"martigny",        name:"Martigny",                 emoji:"🚉", coords:[7.0738,46.1032], distKm:30.0, pop:18200,
-    bus:[],
-    train:[{op:"CFF",min:25,freq:30,fare:8.80,hf:6.00,note:"Train direct CFF"}],
-    pRec:"cour-gare",   tp:"Train CFF 25 min · toutes les 30 min" },
-  { id:"anzere",          name:"Anzère",                   emoji:"⛷",  coords:[7.3958,46.2885], distKm:20.0, pop:1200,
-    bus:[{line:"351",min:45,freqPk:60,freqOff:120,zones:4,fare:5.20,hf:3.60,note:"Bus 351 saisonnier"}], train:[],
-    pRec:null,          tp:"Bus 351 · 45 min · accès saisonnier limité" },
-  { id:"val-herens",      name:"Val d'Hérens (Évolène…)", emoji:"🏔", coords:[7.4978,46.1132], distKm:35.0, pop:3500,
-    bus:[{line:"381",min:60,freqPk:60,freqOff:120,zones:5,fare:7.80,hf:5.40,note:"Bus 381 La Crettaz–Haudères"}], train:[],
-    pRec:null,          tp:"Bus 381 · 60 min · 1×/heure · très dépendant voiture" },
-];
-
-// ─── COST HELPERS ─────────────────────────────────────────────────────────────
-
-function isFreeP(p, dayType, hour) {
-  if (p.type === "pr") return true;
-  if (dayType === "saturday" || dayType === "sunday") return true;
-  if (dayType === "friday" && hour >= 17) return true;
-  if ((p.id === "planta"||p.id === "scex") && dayType !== "saturday" && hour >= 12 && hour < 13.5) return true;
-  return false;
+interface Origin {
+  id: string;
+  label: string;
+  emoji: string;
+  coords: [number, number];
+  population: number;
+  carTimeMin: number;
+  tpTimeMin: number;
+  tpLine: string;
+  tpFreqPeakMin: number;
+  tpFreqOffpeakMin: number;
+  tpTicketCHF: number;
+  tpZone: number;
+  prPotential: boolean;
+  prId?: string;
+  prNote?: string;
+  demand: { centre: number; gare: number; emploi: number };
 }
 
-function parkCost(p, durH, dayType, hour) {
-  if (isFreeP(p, dayType, hour)) return 0;
-  if (p.id === "planta" || p.id === "scex") {
-    const b = Math.max(0, durH - 1);
-    if (b === 0) return 0;
-    return Math.round((Math.min(b,10)*3 + Math.max(0,b-10)*0.20)*100)/100;
-  }
-  return Math.round(durH * p.priceH * 100)/100;
+interface ParkingNode {
+  zoneId: string;
+  capacity: number;
+  basePriceCHFh: number;
 }
 
-function parkBreakdown(p, durH, dayType, hour) {
-  if (isFreeP(p, dayType, hour)) {
-    let why = "Période gratuite";
-    if (dayType === "saturday") why = "Samedi : GRATUIT";
-    else if (dayType === "sunday") why = "Dimanche : GRATUIT";
-    else if (dayType === "friday" && hour >= 17) why = "Ven. dès 17h : GRATUIT";
-    else if (p.type === "pr") why = "P+R : toujours GRATUIT";
-    else if (hour >= 12 && hour < 13.5) why = "Pause midi 12h–13h30 : GRATUIT";
-    return { total:0, lines:[why] };
-  }
-  if (p.id === "planta" || p.id === "scex") {
-    const lines = ["1ère heure : GRATUIT"];
-    let tot = 0;
-    const b = durH - 1;
-    if (b > 0) {
-      const n = Math.min(b,10);
-      const l = Math.max(0,b-10);
-      lines.push(`${n.toFixed(1)}h × CHF 3.00/h = CHF ${(n*3).toFixed(2)}`);
-      tot += n*3;
-      if (l > 0) { lines.push(`${l.toFixed(1)}h × CHF 0.20/h = CHF ${(l*0.20).toFixed(2)} (longue durée)`); tot += l*0.20; }
-    }
-    return { total: Math.round(tot*100)/100, lines };
-  }
-  const tot = Math.round(durH*p.priceH*100)/100;
-  return { total:tot, lines:[`${durH}h × CHF ${p.priceH.toFixed(2)}/h = CHF ${tot.toFixed(2)}${p.priceH===1.5?" (⚠ tarif préf. estimé)":""}`] };
+type DayType = 'weekday' | 'friday' | 'saturday';
+type DurationH = 1 | 2 | 4;
+type Destination = 'centre' | 'gare' | 'emploi';
+type CaptivityClass = 'competitive' | 'moderate' | 'captive';
+
+// ─── Constantes ───────────────────────────────────────────────────────────────
+
+const DEST_COORDS: Record<Destination, [number, number]> = {
+  centre: [7.3595, 46.2333],
+  gare:   [7.3590, 46.2295],
+  emploi: [7.3800, 46.2200],
+};
+
+const DEST_LABELS: Record<Destination, string> = {
+  centre: 'Centre-ville',
+  gare:   'Gare CFF',
+  emploi: 'Zone Emploi',
+};
+
+const PR_NODES = {
+  potences: { label: 'P+R Potences', coords: [7.3318, 46.2282] as [number, number], cap: 450 },
+  stade:    { label: 'P+R Stade',    coords: [7.3888, 46.2282] as [number, number], cap: 460 },
+};
+
+// ─── Helpers coûts ────────────────────────────────────────────────────────────
+
+/** Barème officiel Planta/Scex (source: sion.ch PDFs 2024-2025) */
+function parkingCost(durationH: DurationH, day: DayType): number {
+  if (day === 'friday' || day === 'saturday') return 0; // gratuit ven.17h → sam.24h
+  if (durationH <= 1) return 0;                          // 1ère heure gratuite
+  return (durationH - 1) * 3.0;                          // CHF 3/h (h2→h11)
 }
 
-function busCostOne(line, dayType, hour, hf) {
-  if ((dayType==="friday"&&hour>=17)||dayType==="saturday") return 0;
-  return hf ? line.hf : line.fare;
+function captivityRatio(o: Origin): number {
+  return o.tpTimeMin / o.carTimeMin;
 }
 
-function bestTP(origin, dayType, hour, hf) {
-  const all = [
-    ...(origin.bus||[]).map(l=>({...l,isTrain:false})),
-    ...(origin.train||[]).map(t=>({line:t.op,min:t.min,freqPk:t.freq,freqOff:t.freq*2,fare:t.fare,hf:t.hf,isTrain:true,note:t.note})),
-  ];
-  if (!all.length) return null;
-  const s = [...all].sort((a,b)=>a.min-b.min);
-  const b = s[0];
-  const oneway = busCostOne(b, dayType, hour, hf);
-  const free = (dayType==="friday"&&hour>=17)||dayType==="saturday";
-  return { ...b, oneway, roundTrip: oneway*2, free };
+function captivityClass(ratio: number): CaptivityClass {
+  if (ratio < 1.2) return 'competitive';
+  if (ratio < 1.6) return 'moderate';
+  return 'captive';
 }
 
-// ─── MAPLIBRE LOADER ────────────────────────────────────────────────────────
+const CAPTIVITY_COLORS: Record<CaptivityClass, string> = {
+  competitive: '#22c55e',
+  moderate:    '#f59e0b',
+  captive:     '#ef4444',
+};
 
-let mlLoaded = false;
-let mlError = false;
-function loadML() {
-  return new Promise((res, rej) => {
-    if (window.maplibregl) { mlLoaded=true; res(window.maplibregl); return; }
-    if (mlError) { rej(new Error("ML failed")); return; }
-    const css = document.createElement("link");
-    css.rel="stylesheet";
-    css.href="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/3.6.2/maplibre-gl.min.css";
-    document.head.appendChild(css);
-    const scr = document.createElement("script");
-    scr.src="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/3.6.2/maplibre-gl.min.js";
-    scr.onload=()=>{ mlLoaded=true; res(window.maplibregl); };
-    scr.onerror=()=>{ mlError=true; rej(new Error("ML CDN failed")); };
-    document.head.appendChild(scr);
-  });
-}
+const CAPTIVITY_LABELS: Record<CaptivityClass, string> = {
+  competitive: '🟢 TP compétitif',
+  moderate:    '🟡 TP moyen',
+  captive:     '🔴 Captif voiture',
+};
 
-// ─── BEZIER ARC ─────────────────────────────────────────────────────────────
-
-function arc(from, to, bend=0.018) {
-  const mx=(from[0]+to[0])/2, my=(from[1]+to[1])/2;
-  const dx=to[0]-from[0], dy=to[1]-from[1];
-  const len=Math.sqrt(dx*dx+dy*dy)||1;
-  const mid=[mx-dy/len*bend, my+dx/len*bend];
-  const pts=[];
-  for(let t=0;t<=1;t+=0.025) {
-    const q=1-t;
-    pts.push([q*q*from[0]+2*q*t*mid[0]+t*t*to[0], q*q*from[1]+2*q*t*mid[1]+t*t*to[1]]);
-  }
-  return pts;
-}
-
-// ─── STYLES ────────────────────────────────────────────────────────────────
-
-const TYPE_COLOR = { central:"#1d4ed8", preferred:"#d97706", pr:"#16a34a", station:"#7c3aed" };
-const TYPE_LABEL = { central:"Centre (CHF 3/h)", preferred:"Tarif préférentiel", pr:"P+R GRATUIT", station:"Gare CFF" };
-
-// ─── MAIN COMPONENT ──────────────────────────────────────────────────────────
+// ─── Composant ────────────────────────────────────────────────────────────────
 
 export default function ODSimulator() {
-  const mapEl = useRef(null);
-  const mapRef = useRef(null);
-  const markersRef = useRef([]);
-  const [mlReady, setMlReady] = useState(false);
-  const [mlFailed, setMlFailed] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const mapRef       = useRef<maplibregl.Map | null>(null);
+  const markersRef   = useRef<maplibregl.Marker[]>([]);
+  const arcRef       = useRef<string[]>([]);
+
+  const [origins,  setOrigins]  = useState<Origin[]>([]);
+  const [parkings, setParkings] = useState<ParkingNode[]>([]);
+  const [loading,  setLoading]  = useState(true);
+  const [mapError, setMapError] = useState(false);
   const [mapReady, setMapReady] = useState(false);
 
-  // UI state
-  const [origin, setOrigin] = useState(null);
-  const [parkingId, setParkingId] = useState("planta");
-  const [durH, setDurH] = useState(2);
-  const [dayType, setDayType] = useState("weekday");
-  const [hour, setHour] = useState(9);
-  const [halfFare, setHalfFare] = useState(false);
-  const [tab, setTab] = useState("od"); // od | aggregate
-  const [popupParking, setPopupParking] = useState(null);
+  const [selected,   setSelected]   = useState<Origin | null>(null);
+  const [dest,       setDest]       = useState<Destination>('centre');
+  const [duration,   setDuration]   = useState<DurationH>(2);
+  const [day,        setDay]        = useState<DayType>('weekday');
+  const [halfFare,   setHalfFare]   = useState(false);
 
-  const parking = useMemo(() => PARKINGS.find(p=>p.id===parkingId)||PARKINGS[0], [parkingId]);
-  const originObj = useMemo(() => origin ? ORIGINS.find(o=>o.id===origin) : null, [origin]);
+  // ─── Fetch data ─────────────────────────────────────────────────────────────
 
-  const pBreakdown = useMemo(() => parkBreakdown(parking, durH, dayType, hour), [parking, durH, dayType, hour]);
-  const tpInfo = useMemo(() => originObj ? bestTP(originObj, dayType, hour, halfFare) : null, [originObj, dayType, hour, halfFare]);
-  const fuelCost = useMemo(() => originObj ? Math.round(originObj.distKm*2*0.18*100)/100 : 0, [originObj]);
-
-  const isFreeNow = useMemo(() => isFreeP(parking, dayType, hour), [parking, dayType, hour]);
-  const dayLabel = { weekday:"Lun–Jeu", friday:"Vendredi", saturday:"Samedi", sunday:"Dimanche" };
-  const isFreeTP = tpInfo?.free;
-
-  // ── Load MapLibre ─────────────────────────────────────────────────────────
   useEffect(() => {
-    loadML().then(()=>setMlReady(true)).catch(()=>setMlFailed(true));
+    fetchData()
+      .then((data: any) => {
+        setOrigins(data.origins ?? []);
+        setParkings(data.parking ?? []);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
   }, []);
 
-  // ── Init map ─────────────────────────────────────────────────────────────
+  // ─── Init MapLibre ──────────────────────────────────────────────────────────
+
   useEffect(() => {
-    if (!mlReady || !mapEl.current || mapRef.current) return;
-    const ml = window.maplibregl;
-    const map = new ml.Map({
-      container: mapEl.current,
-      style: {
-        version:8,
-        sources:{ osm:{ type:"raster", tiles:["https://tile.openstreetmap.org/{z}/{x}/{y}.png"], tileSize:256, attribution:"© OpenStreetMap contributors" }},
-        layers:[{id:"osm",type:"raster",source:"osm"}],
-      },
-      center:[7.362,46.233], zoom:11.5,
-      attributionControl:false,
-    });
-    map.addControl(new ml.NavigationControl({showCompass:false}),"top-right");
-    map.addControl(new ml.AttributionControl({compact:true}),"bottom-right");
-    map.on("load",()=>{
-      // Sources
-      map.addSource("arcs",{type:"geojson",data:{type:"FeatureCollection",features:[]}});
-      map.addLayer({ id:"arc-pr",type:"line",source:"arcs",filter:["==","arcType","pr"],
-        layout:{"line-cap":"round","line-join":"round"},
-        paint:{"line-color":"#16a34a","line-width":3,"line-opacity":0.8,"line-dasharray":[2,1.5]}});
-      map.addLayer({ id:"arc-car",type:"line",source:"arcs",filter:["==","arcType","car"],
-        layout:{"line-cap":"round","line-join":"round"},
-        paint:{"line-color":"#1d4ed8","line-width":3.5,"line-opacity":0.85}});
+    if (!containerRef.current || mapRef.current) return;
 
-      // Parking markers
-      PARKINGS.forEach(p=>{
-        const size = 8 + Math.round(p.capacity/100)*2;
-        const el = document.createElement("div");
-        const isPR = p.type==="pr";
-        const isPref = p.type==="preferred";
-        const color = TYPE_COLOR[p.type]||"#1d4ed8";
-        el.innerHTML=`
-          <div style="position:relative;cursor:pointer">
-            <div style="width:${size+12}px;height:${size+12}px;border-radius:50%;background:${color};
-              border:2.5px solid white;box-shadow:0 2px 8px rgba(0,0,0,.4);
-              display:flex;align-items:center;justify-content:center;
-              color:white;font-weight:700;font-size:10px;font-family:sans-serif">
-              ${isPR?"P+R":"P"}
-            </div>
-            <div style="width:2px;height:6px;background:${color};margin:0 auto"></div>
-          </div>`;
-        el.addEventListener("click",e=>{ e.stopPropagation(); setPopupParking(p.id); setParkingId(p.id); });
-        const marker = new ml.Marker({element:el,anchor:"bottom"}).setLngLat(p.coords).addTo(map);
-        markersRef.current.push({type:"parking",id:p.id,marker});
+    try {
+      const map = new maplibregl.Map({
+        container: containerRef.current,
+        style: {
+          version: 8,
+          sources: {
+            osm: {
+              type: 'raster',
+              tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+              tileSize: 256,
+              attribution: '© OpenStreetMap contributors',
+            },
+          },
+          layers: [{ id: 'osm-tiles', type: 'raster', source: 'osm' }],
+        },
+        center: [7.363, 46.232],
+        zoom: 11,
+        attributionControl: false,
       });
 
-      // Origin markers
-      ORIGINS.forEach(o=>{
-        const el = document.createElement("div");
-        el.style.cssText="cursor:pointer;position:relative";
-        el.innerHTML=`
-          <div style="background:white;border:2px solid #6b7280;border-radius:50%;
-            width:28px;height:28px;display:flex;align-items:center;justify-content:center;
-            font-size:14px;box-shadow:0 1px 4px rgba(0,0,0,.3);transition:all .2s"
-            title="${o.name}">
-            ${o.emoji}
-          </div>
-          <div style="width:2px;height:5px;background:#6b7280;margin:0 auto"></div>`;
-        el.addEventListener("click",e=>{ e.stopPropagation(); setOrigin(prev=>prev===o.id?null:o.id); });
-        const marker = new ml.Marker({element:el,anchor:"bottom"}).setLngLat(o.coords).addTo(map);
-        markersRef.current.push({type:"origin",id:o.id,marker,el});
-      });
+      map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+      map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
 
-      setMapReady(true);
-    });
-    mapRef.current = map;
+      map.on('load', () => setMapReady(true));
+      map.on('error', () => setMapError(true));
+
+      mapRef.current = map;
+    } catch {
+      setMapError(true);
+    }
+
     return () => {
-      markersRef.current.forEach(m=>m.marker.remove());
-      markersRef.current=[];
-      map.remove(); mapRef.current=null;
+      mapRef.current?.remove();
+      mapRef.current = null;
     };
-  }, [mlReady]);
+  }, []);
 
-  // ── Update arcs & marker highlights ─────────────────────────────────────
+  // ─── Markers ────────────────────────────────────────────────────────────────
+
+  const addMarkers = useCallback(() => {
+    const map = mapRef.current;
+    if (!map || !origins.length) return;
+
+    // Clear old markers
+    markersRef.current.forEach(m => m.remove());
+    markersRef.current = [];
+
+    // Origin markers (colored circles)
+    origins.forEach(origin => {
+      const ratio = captivityRatio(origin);
+      const cls   = captivityClass(ratio);
+      const color = CAPTIVITY_COLORS[cls];
+
+      const el = document.createElement('div');
+      el.style.cssText = `
+        width: 36px; height: 36px; border-radius: 50%;
+        background: ${color}; border: 3px solid white;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        cursor: pointer; display: flex; align-items: center; justify-content: center;
+        font-size: 14px; transition: transform 0.15s;
+      `;
+      el.textContent = origin.emoji;
+      el.title = `${origin.label} — ratio TP/voiture: ${ratio.toFixed(2)}`;
+      el.addEventListener('mouseover', () => { el.style.transform = 'scale(1.2)'; });
+      el.addEventListener('mouseout',  () => { el.style.transform = selected?.id === origin.id ? 'scale(1.2)' : 'scale(1)'; });
+      el.addEventListener('click',     () => setSelected(o => o?.id === origin.id ? null : origin));
+
+      const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
+        .setLngLat(origin.coords)
+        .addTo(map);
+      markersRef.current.push(marker);
+    });
+
+    // Destination markers
+    (['centre', 'gare', 'emploi'] as Destination[]).forEach(d => {
+      const el = document.createElement('div');
+      el.style.cssText = `
+        width: 32px; height: 32px; border-radius: 6px;
+        background: #1e3a5f; border: 2px solid white;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 11px; color: white; font-weight: 700; cursor: default;
+      `;
+      el.textContent = d === 'centre' ? '🏛' : d === 'gare' ? '🚉' : '🏭';
+      new maplibregl.Marker({ element: el, anchor: 'center' })
+        .setLngLat(DEST_COORDS[d])
+        .addTo(map);
+    });
+
+    // P+R markers
+    Object.entries(PR_NODES).forEach(([id, pr]) => {
+      const el = document.createElement('div');
+      el.style.cssText = `
+        padding: 3px 7px; border-radius: 12px;
+        background: #16a34a; border: 2px solid white;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        font-size: 10px; font-weight: 700; color: white; cursor: default;
+        white-space: nowrap;
+      `;
+      el.textContent = `P+R ${pr.cap}pl.`;
+      el.title = pr.label;
+      new maplibregl.Marker({ element: el, anchor: 'center' })
+        .setLngLat(pr.coords)
+        .addTo(map);
+    });
+
+  }, [origins, selected?.id]);
+
+  useEffect(() => {
+    if (mapReady && origins.length) addMarkers();
+  }, [mapReady, addMarkers]);
+
+  // ─── Arc origine → destination ───────────────────────────────────────────────
+
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
 
-    // Update origin marker styles
-    markersRef.current.filter(m=>m.type==="origin").forEach(m=>{
-      const isSelected = m.id === origin;
-      const dot = m.el.querySelector("div");
-      if (dot) {
-        dot.style.borderColor = isSelected ? "#dc2626" : "#6b7280";
-        dot.style.borderWidth = isSelected ? "3px" : "2px";
-        dot.style.transform = isSelected ? "scale(1.2)" : "scale(1)";
-        dot.style.boxShadow = isSelected ? "0 2px 8px rgba(220,38,38,.5)" : "0 1px 4px rgba(0,0,0,.3)";
-      }
+    // Remove old arc layers
+    arcRef.current.forEach(id => {
+      if (map.getLayer(id)) map.removeLayer(id);
     });
-
-    // Update parking marker highlights
-    markersRef.current.filter(m=>m.type==="parking").forEach(m=>{
-      const isSelected = m.id === parkingId;
-      const dot = m.el.querySelector("div:first-child");
-      if (dot) {
-        dot.style.transform = isSelected ? "scale(1.2)" : "scale(1)";
-        dot.style.boxShadow = isSelected ? "0 0 0 3px white, 0 0 0 5px rgba(220,38,38,.6)" : "0 2px 8px rgba(0,0,0,.4)";
-      }
+    arcRef.current.forEach(id => {
+      if (map.getSource(id)) map.removeSource(id);
     });
+    arcRef.current = [];
 
-    if (!map.getSource("arcs")) return;
+    if (!selected) return;
 
-    const features = [];
-    if (origin && originObj) {
-      // Car arc: origin → selected parking
-      const carPts = arc(originObj.coords, parking.coords);
-      features.push({ type:"Feature", properties:{arcType:"car"}, geometry:{type:"LineString",coordinates:carPts}});
+    const destCoord = DEST_COORDS[dest];
 
-      // P+R arc if origin has recommended P+R and it's not already the selected parking
-      const prId = originObj.pRec;
-      if (prId && prId !== parkingId) {
-        const pr = PARKINGS.find(p=>p.id===prId);
-        if (pr) {
-          const prPts = arc(originObj.coords, pr.coords, 0.022);
-          features.push({ type:"Feature", properties:{arcType:"pr"}, geometry:{type:"LineString",coordinates:prPts}});
-        }
+    // Car arc (blue)
+    const carId = 'arc-car';
+    map.addSource(carId, {
+      type: 'geojson',
+      data: {
+        type: 'Feature',
+        geometry: { type: 'LineString', coordinates: [selected.coords, destCoord] },
+        properties: {},
+      },
+    });
+    map.addLayer({
+      id: carId, type: 'line', source: carId,
+      paint: { 'line-color': '#3b82f6', 'line-width': 2.5, 'line-opacity': 0.8 },
+    });
+    arcRef.current.push(carId, carId);
+
+    // P+R arc (green dashed) if applicable
+    if (selected.prPotential && selected.prId) {
+      const pr = PR_NODES[selected.prId as keyof typeof PR_NODES];
+      if (pr) {
+        const prCarId  = 'arc-pr-car';
+        const prBusId  = 'arc-pr-bus';
+        map.addSource(prCarId, {
+          type: 'geojson',
+          data: { type: 'Feature', geometry: { type: 'LineString', coordinates: [selected.coords, pr.coords] }, properties: {} },
+        });
+        map.addLayer({
+          id: prCarId, type: 'line', source: prCarId,
+          paint: { 'line-color': '#16a34a', 'line-width': 2, 'line-opacity': 0.7, 'line-dasharray': [4, 3] },
+        });
+        map.addSource(prBusId, {
+          type: 'geojson',
+          data: { type: 'Feature', geometry: { type: 'LineString', coordinates: [pr.coords, destCoord] }, properties: {} },
+        });
+        map.addLayer({
+          id: prBusId, type: 'line', source: prBusId,
+          paint: { 'line-color': '#16a34a', 'line-width': 2.5, 'line-opacity': 0.9 },
+        });
+        arcRef.current.push(prCarId, prCarId, prBusId, prBusId);
       }
     }
-    map.getSource("arcs").setData({type:"FeatureCollection",features});
 
-    // Fly to origin
-    if (origin && originObj) {
-      const bounds = [
-        [Math.min(originObj.coords[0], parking.coords[0]) - 0.01, Math.min(originObj.coords[1], parking.coords[1]) - 0.01],
-        [Math.max(originObj.coords[0], parking.coords[0]) + 0.01, Math.max(originObj.coords[1], parking.coords[1]) + 0.01],
-      ];
-      map.fitBounds(bounds, { padding:80, duration:600 });
+    // Fit map to show origin + destination
+    const bounds = new maplibregl.LngLatBounds(selected.coords, destCoord);
+    map.fitBounds(bounds, { padding: 100, maxZoom: 13, duration: 600 });
+
+  }, [selected, dest, mapReady]);
+
+  // ─── Calcul coûts ────────────────────────────────────────────────────────────
+
+  const costs = selected ? (() => {
+    const VOT = 22; // CHF/h moyen
+    const park = parkingCost(duration, day);
+    const carKm = (selected.carTimeMin / 60) * 40 * 0.18; // ~40 km/h moyenne
+    const carTime = (selected.carTimeMin / 60) * VOT;
+    const carTotal = park + carTime + carKm + 1.2; // +friction recherche parking
+
+    const freqMin = day === 'weekday' ? selected.tpFreqPeakMin : selected.tpFreqOffpeakMin;
+    const tpTicket = selected.tpTicketCHF * (halfFare ? 0.5 : 1);
+    const tpWait = (freqMin / 2 / 60) * VOT;
+    const tpTime = (selected.tpTimeMin / 60) * VOT;
+    const tpTotal = tpTicket + tpWait + tpTime;
+
+    let prTotal: number | null = null;
+    if (selected.prPotential && selected.prId) {
+      const pr = PR_NODES[selected.prId as keyof typeof PR_NODES];
+      if (pr) {
+        const prDriveMin = selected.carTimeMin * 0.4;
+        const prBusMin   = pr.busTimeToCentreMin ?? 11;
+        const prTime = ((prDriveMin + prBusMin + 5) / 60) * VOT;
+        const prKm   = (prDriveMin / 60) * 40 * 0.18;
+        prTotal = 0 + 2.20 + prTime + prKm; // parking P+R gratuit + billet zone 1
+      }
     }
-  }, [origin, parkingId, mapReady]);
 
-  // ── Parking popup in panel ───────────────────────────────────────────────
-  const ppObj = useMemo(()=>popupParking?PARKINGS.find(p=>p.id===popupParking):null,[popupParking]);
-  const ppBreak = useMemo(()=>ppObj?parkBreakdown(ppObj,durH,dayType,hour):null,[ppObj,durH,dayType,hour]);
+    return { park, carKm, carTime, carTotal, tpTicket, tpWait, tpTime, tpTotal, prTotal };
+  })() : null;
 
-  // ── Aggregate OD flows (static data) ────────────────────────────────────
-  const FLOWS = [
-    { from:"Périphérie / Nendaz / Val d'Hérens", vol:100, pct:0.92, tp:"Faible (bus 1×/h ou moins)", carDepIdx:0.88 },
-    { from:"Savièse", vol:85, pct:0.78, tp:"Bus 341/342 · 30 min", carDepIdx:0.72 },
-    { from:"Conthey / Ardon / Châteauneuf", vol:90, pct:0.70, tp:"Train/bus 8-22 min · zone 2", carDepIdx:0.58 },
-    { from:"Bramois / Uvrier / St-Léonard", vol:75, pct:0.65, tp:"BS 11 / Train · 8-18 min", carDepIdx:0.45 },
-    { from:"Sierre / Martigny (train)", vol:60, pct:0.55, tp:"Train 15-25 min · 30 min", carDepIdx:0.30 },
-    { from:"Anzère / Grimisuat", vol:30, pct:0.82, tp:"Bus 45-50 min · rare", carDepIdx:0.85 },
-  ];
+  const ratio  = selected ? captivityRatio(selected) : null;
+  const cls    = ratio ? captivityClass(ratio) : null;
 
-  // ─── RENDER ──────────────────────────────────────────────────────────────
+  // Sorted origins for list (captives first)
+  const sortedOrigins = [...origins].sort((a, b) => captivityRatio(b) - captivityRatio(a));
 
-  const DUR_OPTIONS = [0.5, 1, 1.5, 2, 3, 4, 8];
-  const DAY_OPTIONS = [
-    {v:"weekday",l:"Lun–Jeu"},
-    {v:"friday",l:"Vendredi"},
-    {v:"saturday",l:"Samedi"},
-    {v:"sunday",l:"Dimanche"},
-  ];
+  // ─── Rendu ───────────────────────────────────────────────────────────────────
 
   return (
-    <div style={{display:"flex",height:"100vh",fontFamily:"system-ui,sans-serif",background:"#f8fafc",color:"#0f1117",overflow:"hidden"}}>
+    <div style={{ display: 'flex', height: '100%', fontFamily: "'DM Sans', sans-serif" }}>
 
-      {/* ── MAP ──────────────────────────────────────────────────────────── */}
-      <div style={{flex:1,position:"relative",minWidth:0}}>
-        {mlFailed ? (
-          <div style={{height:"100%",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:12,background:"#f1f5f9"}}>
-            <div style={{fontSize:32}}>⚠️</div>
-            <div style={{fontWeight:600,color:"#475569"}}>Carte indisponible</div>
-            <div style={{fontSize:12,color:"#94a3b8",textAlign:"center"}}>CDN MapLibre inaccessible (réseau filtré)<br/>Utilisez le panneau de droite</div>
+      {/* ── Carte ── */}
+      <div style={{ flex: 1, position: 'relative' }}>
+        {mapError ? (
+          <div style={{
+            height: '100%', display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center', background: '#f8fafc', gap: 16,
+          }}>
+            <span style={{ fontSize: 48 }}>⚠️</span>
+            <div style={{ fontSize: 16, fontWeight: 600, color: '#374151' }}>Carte indisponible</div>
+            <div style={{ fontSize: 13, color: '#6b7280', textAlign: 'center', maxWidth: 280 }}>
+              Réseau filtré — utilisez le panneau de droite pour l'analyse.
+            </div>
           </div>
         ) : (
-          <div ref={mapEl} style={{width:"100%",height:"100%"}}/>
+          <div ref={containerRef} style={{ height: '100%' }} />
         )}
 
-        {/* Legend overlay */}
-        <div style={{position:"absolute",bottom:24,left:12,zIndex:10,background:"rgba(255,255,255,.93)",borderRadius:10,padding:"10px 12px",boxShadow:"0 2px 8px rgba(0,0,0,.15)",backdropFilter:"blur(4px)"}}>
-          <div style={{fontSize:10,fontWeight:700,color:"#6b7280",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Parkings</div>
-          {Object.entries(TYPE_COLOR).map(([t,c])=>(
-            <div key={t} style={{display:"flex",alignItems:"center",gap:6,marginBottom:4,fontSize:11}}>
-              <div style={{width:10,height:10,borderRadius:"50%",background:c}}/>
-              <span style={{color:"#475569"}}>{TYPE_LABEL[t]}</span>
+        {/* Légende flottante */}
+        {!mapError && (
+          <div style={{
+            position: 'absolute', bottom: 32, left: 16, zIndex: 10,
+            background: 'white', borderRadius: 12, padding: '12px 16px',
+            boxShadow: '0 2px 12px rgba(0,0,0,0.15)', minWidth: 180,
+          }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Captivité voiture
             </div>
-          ))}
-          <div style={{marginTop:8,paddingTop:8,borderTop:"1px solid #f1f5f9",fontSize:10,color:"#94a3b8"}}>
-            <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3}}>
-              <div style={{width:18,height:3,borderRadius:2,background:"#1d4ed8"}}/>
-              <span>Flux voiture</span>
-            </div>
-            <div style={{display:"flex",alignItems:"center",gap:6}}>
-              <div style={{width:18,height:2,borderRadius:2,background:"#16a34a",borderStyle:"dashed"}}/>
-              <span>P+R recommandé</span>
+            {(['competitive', 'moderate', 'captive'] as CaptivityClass[]).map(c => (
+              <div key={c} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, fontSize: 12 }}>
+                <div style={{ width: 12, height: 12, borderRadius: '50%', background: CAPTIVITY_COLORS[c] }} />
+                <span style={{ color: '#374151' }}>{CAPTIVITY_LABELS[c]}</span>
+              </div>
+            ))}
+            <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #e5e7eb' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, marginBottom: 3 }}>
+                <div style={{ width: 20, height: 3, background: '#3b82f6', borderRadius: 2 }} />
+                <span style={{ color: '#374151' }}>Trajet voiture</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+                <div style={{ width: 20, height: 3, background: '#16a34a', borderRadius: 2, borderTop: '1px dashed #16a34a' }} />
+                <span style={{ color: '#374151' }}>Via P+R</span>
+              </div>
             </div>
           </div>
-          <div style={{marginTop:6,fontSize:9,color:"#cbd5e1"}}>Cliquer sur une origine 🍇 pour voir les flux</div>
-        </div>
+        )}
       </div>
 
-      {/* ── PANEL ────────────────────────────────────────────────────────── */}
-      <div style={{width:360,flexShrink:0,background:"#fff",borderLeft:"1px solid #e2e8f0",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+      {/* ── Panneau droit ── */}
+      <div style={{
+        width: 380, background: 'white', borderLeft: '1px solid #e5e7eb',
+        display: 'flex', flexDirection: 'column', overflow: 'hidden',
+      }}>
 
         {/* Header */}
-        <div style={{padding:"12px 16px",borderBottom:"1px solid #f1f5f9",background:"#fff"}}>
-          <div style={{display:"flex",gap:4,marginBottom:8}}>
-            {[{v:"od",l:"👤 OD Démo"},  {v:"aggregate",l:"◉ Flux"}].map(t=>(
-              <button key={t.v} onClick={()=>setTab(t.v)} style={{
-                flex:1,padding:"6px 8px",borderRadius:8,border:"none",cursor:"pointer",fontSize:11,fontWeight:600,
-                background:tab===t.v?"#dc2626":"#f8fafc",color:tab===t.v?"#fff":"#6b7280",transition:"all .15s"
-              }}>{t.l}</button>
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid #e5e7eb', background: '#f8fafc' }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: '#111827', marginBottom: 12 }}>
+            Accessibilité depuis les communes
+          </div>
+
+          {/* Destination */}
+          <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+            {(['centre', 'gare', 'emploi'] as Destination[]).map(d => (
+              <button key={d} onClick={() => setDest(d)}
+                style={{
+                  flex: 1, padding: '6px 4px', borderRadius: 8, fontSize: 11, fontWeight: 600,
+                  cursor: 'pointer', border: '1.5px solid',
+                  borderColor: dest === d ? '#2563eb' : '#e5e7eb',
+                  background: dest === d ? '#eff6ff' : 'white',
+                  color: dest === d ? '#2563eb' : '#6b7280',
+                }}>
+                {d === 'centre' ? '🏛 Centre' : d === 'gare' ? '🚉 Gare' : '🏭 Emploi'}
+              </button>
             ))}
           </div>
 
-          {/* Day selector */}
-          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:3,marginBottom:8}}>
-            {DAY_OPTIONS.map(d=>{
-              const isFriSat = (d.v==="friday"||d.v==="saturday");
-              return (
-                <button key={d.v} onClick={()=>setDayType(d.v)} style={{
-                  padding:"4px 2px",borderRadius:6,border:"none",cursor:"pointer",fontSize:10,fontWeight:600,
-                  background:dayType===d.v?"#1e3a8a":"#f8fafc",
-                  color:dayType===d.v?"#fff":isFriSat?"#15803d":"#6b7280",
-                }}>
-                  {d.l}
-                  {isFriSat && <div style={{fontSize:8,color:dayType===d.v?"#bfdbfe":"#16a34a"}}>🆓 gratuit</div>}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Hour slider */}
-          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
-            <span style={{fontSize:10,color:"#6b7280",minWidth:40}}>Heure</span>
-            <input type="range" min={0} max={23} value={hour} onChange={e=>setHour(+e.target.value)}
-              style={{flex:1,height:4,accentColor:"#1e3a8a"}}/>
-            <span style={{fontFamily:"monospace",fontSize:11,fontWeight:700,minWidth:24}}>{hour}h</span>
-          </div>
-
-          {/* Duration selector */}
-          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
-            <span style={{fontSize:10,color:"#6b7280",minWidth:40}}>Durée</span>
-            <div style={{display:"flex",gap:2,flex:1,flexWrap:"wrap"}}>
-              {DUR_OPTIONS.map(d=>(
-                <button key={d} onClick={()=>setDurH(d)} style={{
-                  padding:"3px 5px",borderRadius:5,border:"none",cursor:"pointer",fontSize:10,fontWeight:600,
-                  background:durH===d?"#1e3a8a":"#f8fafc",color:durH===d?"#fff":"#6b7280",
-                }}>{d<1?`${d*60}min`:d===1?"1h":`${d}h`}</button>
-              ))}
+          {/* Durée + Jour */}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 10, color: '#9ca3af', marginBottom: 4, fontWeight: 600 }}>DURÉE</div>
+              <div style={{ display: 'flex', gap: 4 }}>
+                {([1, 2, 4] as DurationH[]).map(d => (
+                  <button key={d} onClick={() => setDuration(d)}
+                    style={{
+                      flex: 1, padding: '5px 0', borderRadius: 6, fontSize: 11, fontWeight: 600,
+                      cursor: 'pointer', border: '1.5px solid',
+                      borderColor: duration === d ? '#7c3aed' : '#e5e7eb',
+                      background: duration === d ? '#f5f3ff' : 'white',
+                      color: duration === d ? '#7c3aed' : '#6b7280',
+                    }}>
+                    {d}h
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 10, color: '#9ca3af', marginBottom: 4, fontWeight: 600 }}>JOUR</div>
+              <div style={{ display: 'flex', gap: 4 }}>
+                {([['weekday','Lun-J'],['friday','Ven⚡'],['saturday','Sam⚡']] as [DayType,string][]).map(([d, l]) => (
+                  <button key={d} onClick={() => setDay(d)}
+                    style={{
+                      flex: 1, padding: '5px 0', borderRadius: 6, fontSize: 10, fontWeight: 600,
+                      cursor: 'pointer', border: '1.5px solid',
+                      borderColor: day === d ? '#d97706' : '#e5e7eb',
+                      background: day === d ? '#fffbeb' : 'white',
+                      color: day === d ? '#d97706' : '#6b7280',
+                    }}>
+                    {l}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
-          {/* Half fare toggle */}
-          <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",fontSize:11}}>
-            <div onClick={()=>setHalfFare(v=>!v)} style={{
-              width:32,height:18,borderRadius:9,background:halfFare?"#1e3a8a":"#e2e8f0",
-              display:"flex",alignItems:"center",padding:2,cursor:"pointer",transition:"background .2s"
-            }}>
-              <div style={{width:14,height:14,borderRadius:"50%",background:"#fff",transition:"transform .2s",transform:halfFare?"translateX(14px)":"translateX(0)"}}/>
-            </div>
-            <span style={{color:"#475569"}}>Demi-tarif CFF</span>
+          {/* Demi-tarif */}
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, cursor: 'pointer', fontSize: 12, color: '#374151' }}>
+            <input type="checkbox" checked={halfFare} onChange={e => setHalfFare(e.target.checked)}
+              style={{ width: 16, height: 16, accentColor: '#2563eb' }} />
+            Demi-tarif CFF (abonnement)
           </label>
         </div>
 
-        {/* Scrollable content */}
-        <div style={{flex:1,overflowY:"auto"}}>
+        {/* Corps scrollable */}
+        <div style={{ flex: 1, overflowY: 'auto' }}>
 
-          {/* ── OD TAB ─────────────────────────────────────────────── */}
-          {tab === "od" && (
-            <div>
-              {/* Origins list */}
-              <div style={{padding:"10px 16px",borderBottom:"1px solid #f8fafc"}}>
-                <div style={{fontSize:10,fontWeight:700,color:"#6b7280",textTransform:"uppercase",letterSpacing:".05em",marginBottom:8}}>
-                  Origine — cliquer sur carte ou liste
+          {/* ─ Détail origine sélectionnée ─ */}
+          {selected && costs && cls && ratio ? (
+            <div style={{ padding: '16px 20px' }}>
+              {/* Origin header */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: '#111827' }}>
+                    {selected.emoji} {selected.label}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#6b7280' }}>→ {DEST_LABELS[dest]}</div>
                 </div>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:4}}>
-                  {ORIGINS.map(o=>{
-                    const isSelected = origin===o.id;
-                    const distColor = o.distKm<8?"#16a34a":o.distKm<18?"#d97706":"#dc2626";
+                <button onClick={() => setSelected(null)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: 18, padding: 4 }}>
+                  ×
+                </button>
+              </div>
+
+              {/* Captivity badge */}
+              <div style={{
+                padding: '8px 14px', borderRadius: 10, marginBottom: 14, fontSize: 13, fontWeight: 600,
+                background: cls === 'competitive' ? '#f0fdf4' : cls === 'moderate' ? '#fffbeb' : '#fef2f2',
+                color: cls === 'competitive' ? '#15803d' : cls === 'moderate' ? '#d97706' : '#dc2626',
+                border: `1.5px solid ${CAPTIVITY_COLORS[cls]}40`,
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              }}>
+                <span>{CAPTIVITY_LABELS[cls]}</span>
+                <span style={{ fontSize: 11, fontWeight: 400 }}>TP/voiture : ×{ratio.toFixed(2)}</span>
+              </div>
+
+              {/* Temps */}
+              <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+                {[
+                  { label: '🚗 Voiture', value: `${selected.carTimeMin} min`, sub: selected.tpLine ? '' : '' },
+                  { label: '🚌 TP direct', value: `${selected.tpTimeMin} min`, sub: selected.tpLine },
+                ].map(item => (
+                  <div key={item.label} style={{
+                    flex: 1, background: '#f8fafc', borderRadius: 10, padding: '10px 12px', textAlign: 'center',
+                  }}>
+                    <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>{item.label}</div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: '#111827' }}>{item.value}</div>
+                    {item.sub && <div style={{ fontSize: 10, color: '#9ca3af' }}>{item.sub}</div>}
+                  </div>
+                ))}
+              </div>
+
+              {/* Fréquence TP */}
+              <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 14, padding: '8px 12px', background: '#f8fafc', borderRadius: 8 }}>
+                🕐 {selected.tpLine} — toutes les <strong style={{ color: '#374151' }}>
+                  {day === 'weekday' ? selected.tpFreqPeakMin : selected.tpFreqOffpeakMin} min
+                </strong>
+                {' · '}billet isireso zone {selected.tpZone === 99 ? 'CFF' : selected.tpZone} : <strong style={{ color: '#374151' }}>
+                  CHF {(selected.tpTicketCHF * (halfFare ? 0.5 : 1)).toFixed(2)}
+                </strong>
+              </div>
+
+              {/* Coûts */}
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Coût total estimé — {duration}h
+                  {(day === 'friday' || day === 'saturday') && ' · parking gratuit'}
+                </div>
+
+                {/* Car */}
+                <div style={{
+                  borderRadius: 10, border: '1.5px solid #bfdbfe', background: '#eff6ff',
+                  padding: '10px 14px', marginBottom: 8,
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: '#1d4ed8' }}>🚗 Voiture</span>
+                    <span style={{ fontSize: 16, fontWeight: 700, color: '#1d4ed8' }}>CHF {costs.carTotal.toFixed(2)}</span>
+                  </div>
+                  <div style={{ fontSize: 11, color: '#3b82f6', display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                    <span>Parking: CHF {costs.park.toFixed(2)}</span>
+                    <span>Temps: CHF {costs.carTime.toFixed(2)}</span>
+                    <span>Distance: CHF {costs.carKm.toFixed(2)}</span>
+                  </div>
+                </div>
+
+                {/* TP */}
+                <div style={{
+                  borderRadius: 10, border: '1.5px solid #bbf7d0', background: '#f0fdf4',
+                  padding: '10px 14px', marginBottom: 8,
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: '#15803d' }}>🚌 TP direct</span>
+                    <span style={{ fontSize: 16, fontWeight: 700, color: '#15803d' }}>CHF {costs.tpTotal.toFixed(2)}</span>
+                  </div>
+                  <div style={{ fontSize: 11, color: '#16a34a', display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                    <span>Billet: CHF {costs.tpTicket.toFixed(2)}</span>
+                    <span>Trajet: CHF {costs.tpTime.toFixed(2)}</span>
+                    <span>Attente: CHF {costs.tpWait.toFixed(2)}</span>
+                  </div>
+                </div>
+
+                {/* P+R */}
+                {costs.prTotal !== null && selected.prNote && (
+                  <div style={{
+                    borderRadius: 10, border: '1.5px solid #a7f3d0', background: '#ecfdf5',
+                    padding: '10px 14px',
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: '#065f46' }}>🅿️ Via P+R</span>
+                      <span style={{ fontSize: 16, fontWeight: 700, color: '#065f46' }}>CHF {costs.prTotal.toFixed(2)}</span>
+                    </div>
+                    <div style={{ fontSize: 11, color: '#047857' }}>{selected.prNote}</div>
+                  </div>
+                )}
+
+                {/* Économie potentielle */}
+                {costs.tpTotal < costs.carTotal && (
+                  <div style={{
+                    marginTop: 10, padding: '8px 12px', borderRadius: 8,
+                    background: '#f0fdf4', border: '1px solid #bbf7d0',
+                    fontSize: 12, color: '#15803d', fontWeight: 600,
+                  }}>
+                    💡 Économie si TP : CHF {(costs.carTotal - costs.tpTotal).toFixed(2)}/trajet
+                    {' = '}CHF {((costs.carTotal - costs.tpTotal) * 220).toFixed(0)}/an (220 jours)
+                  </div>
+                )}
+              </div>
+
+              {/* Demande */}
+              <div style={{ fontSize: 11, color: '#9ca3af', padding: '8px 12px', background: '#f8fafc', borderRadius: 8 }}>
+                📊 Flux estimé vers {DEST_LABELS[dest]} :&nbsp;
+                <strong style={{ color: '#374151' }}>
+                  ~{selected.demand[dest].toLocaleString('fr-CH')} voyages/jour
+                </strong>
+                &nbsp;· Pop. commune : {selected.population.toLocaleString('fr-CH')}
+              </div>
+            </div>
+
+          ) : (
+            /* ─ Liste des origines ─ */
+            <div style={{ padding: '12px 16px' }}>
+              {loading ? (
+                <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af', fontSize: 13 }}>
+                  Chargement des données…
+                </div>
+              ) : sortedOrigins.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af', fontSize: 13 }}>
+                  Données d'origine non disponibles.
+                </div>
+              ) : (
+                <>
+                  <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 10, fontWeight: 600 }}>
+                    CLASSEMENT PAR CAPTIVITÉ VOITURE (↑ le plus captif en premier)
+                  </div>
+                  {sortedOrigins.map(origin => {
+                    const r   = captivityRatio(origin);
+                    const c   = captivityClass(r);
+                    const col = CAPTIVITY_COLORS[c];
                     return (
-                      <button key={o.id} onClick={()=>setOrigin(prev=>prev===o.id?null:o.id)} style={{
-                        textAlign:"left",padding:"6px 8px",borderRadius:8,cursor:"pointer",
-                        border:`1.5px solid ${isSelected?"#dc2626":"#e2e8f0"}`,
-                        background:isSelected?"#fef2f2":"#fff",
-                        transition:"all .15s",
-                      }}>
-                        <div style={{fontSize:13}}>{o.emoji} <span style={{fontWeight:600,fontSize:11,color:isSelected?"#dc2626":"#1e293b"}}>{o.name}</span></div>
-                        <div style={{fontSize:9,color:distColor,marginTop:1}}>{o.distKm} km</div>
-                        <div style={{fontSize:9,color:"#94a3b8",marginTop:1,lineHeight:1.3}}>{o.tp.slice(0,45)}{o.tp.length>45?"…":""}</div>
+                      <button key={origin.id} onClick={() => setSelected(origin)}
+                        style={{
+                          width: '100%', display: 'flex', alignItems: 'center', gap: 12,
+                          padding: '10px 12px', borderRadius: 10, marginBottom: 6, cursor: 'pointer',
+                          border: '1.5px solid #e5e7eb', background: 'white',
+                          textAlign: 'left', transition: 'all 0.15s',
+                        }}
+                        onMouseOver={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = col; (e.currentTarget as HTMLButtonElement).style.background = '#f9fafb'; }}
+                        onMouseOut={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = '#e5e7eb'; (e.currentTarget as HTMLButtonElement).style.background = 'white'; }}
+                      >
+                        <div style={{ width: 10, height: 10, borderRadius: '50%', background: col, flexShrink: 0 }} />
+                        <span style={{ fontSize: 18 }}>{origin.emoji}</span>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: '#111827' }}>{origin.label}</div>
+                          <div style={{ fontSize: 10, color: '#9ca3af' }}>
+                            🚗 {origin.carTimeMin} min · 🚌 {origin.tpTimeMin} min · {origin.tpLine}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: col }}>×{r.toFixed(2)}</div>
+                          <div style={{ fontSize: 9, color: '#9ca3af' }}>ratio TP/car</div>
+                        </div>
+                        {origin.prPotential && (
+                          <div style={{ fontSize: 9, background: '#dcfce7', color: '#15803d', padding: '2px 6px', borderRadius: 8, fontWeight: 600 }}>
+                            P+R
+                          </div>
+                        )}
                       </button>
                     );
                   })}
-                </div>
-              </div>
-
-              {/* Result panel */}
-              {originObj ? (
-                <div style={{padding:"12px 16px"}}>
-                  <div style={{fontWeight:700,fontSize:13,marginBottom:2}}>
-                    {originObj.emoji} {originObj.name} → Sion
+                  <div style={{ fontSize: 10, color: '#d1d5db', textAlign: 'center', marginTop: 8 }}>
+                    Source: ARE Microrecensement 2015 · Estimation MobilityLab
                   </div>
-                  <div style={{fontSize:11,color:"#6b7280",marginBottom:12}}>
-                    {dayLabel[dayType]} · {hour}h · {durH<1?`${durH*60}min`:durH+"h"} · {originObj.distKm} km
-                  </div>
-
-                  {/* Parking selector for this origin */}
-                  <div style={{marginBottom:12}}>
-                    <div style={{fontSize:10,fontWeight:700,color:"#6b7280",textTransform:"uppercase",marginBottom:6}}>Choisir le parking</div>
-                    <div style={{display:"flex",flexDirection:"column",gap:3}}>
-                      {PARKINGS.map(p=>{
-                        const cost = parkCost(p, durH, dayType, hour);
-                        const isFree = isFreeP(p, dayType, hour);
-                        const isSel = parkingId===p.id;
-                        return (
-                          <button key={p.id} onClick={()=>{setParkingId(p.id);setPopupParking(null);}} style={{
-                            display:"flex",alignItems:"center",justifyContent:"space-between",
-                            padding:"6px 10px",borderRadius:8,cursor:"pointer",
-                            border:`1.5px solid ${isSel?"#1e3a8a":"#e2e8f0"}`,
-                            background:isSel?"#eff6ff":"#fff",textAlign:"left",
-                          }}>
-                            <div>
-                              <span style={{fontSize:10,fontWeight:600,color:isSel?"#1e3a8a":"#1e293b"}}>{p.short}</span>
-                              <span style={{fontSize:9,color:"#94a3b8",marginLeft:4}}>{p.capacity}pl · {p.walkCentre}min</span>
-                            </div>
-                            <div style={{
-                              fontSize:11,fontWeight:700,
-                              color:isFree?"#16a34a":cost===0?"#16a34a":TYPE_COLOR[p.type]||"#1e3a8a"
-                            }}>
-                              {isFree ? "0.—" : cost===0 ? "0.—" : `CHF ${cost.toFixed(2)}`}
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* AVANT / APRÈS comparison */}
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
-                    {/* VOITURE */}
-                    <div style={{background:isFreeNow?"#f0fdf4":"#eff6ff",borderRadius:10,padding:10,border:`1px solid ${isFreeNow?"#bbf7d0":"#bfdbfe"}`}}>
-                      <div style={{fontSize:9,fontWeight:700,color:"#6b7280",textTransform:"uppercase",marginBottom:6}}>🚗 Voiture</div>
-                      {pBreakdown.lines.map((l,i)=>(
-                        <div key={i} style={{fontSize:10,color:"#475569",marginBottom:2,lineHeight:1.3}}>{l}</div>
-                      ))}
-                      <div style={{fontSize:10,color:"#6b7280",marginTop:4}}>+ Carburant ~CHF {fuelCost.toFixed(2)} <span style={{fontSize:9}}>(A/R)</span></div>
-                      <div style={{marginTop:6,paddingTop:6,borderTop:`1px solid ${isFreeNow?"#bbf7d0":"#bfdbfe"}`}}>
-                        <span style={{fontWeight:700,fontSize:14,color:isFreeNow?"#16a34a":"#1e3a8a"}}>
-                          CHF {(pBreakdown.total+fuelCost).toFixed(2)}
-                        </span>
-                        <div style={{fontSize:9,color:"#94a3b8"}}>parking + carburant</div>
-                      </div>
-                    </div>
-
-                    {/* BUS / TRAIN */}
-                    {tpInfo ? (
-                      <div style={{background:isFreeTP?"#f0fdf4":"#fafafa",borderRadius:10,padding:10,border:`1px solid ${isFreeTP?"#bbf7d0":"#e2e8f0"}`}}>
-                        <div style={{fontSize:9,fontWeight:700,color:"#6b7280",textTransform:"uppercase",marginBottom:6}}>
-                          {tpInfo.isTrain ? "🚉 Train" : "🚌 Bus"}
-                        </div>
-                        <div style={{fontSize:10,fontWeight:600,color:"#1e293b",marginBottom:2}}>{tpInfo.line}</div>
-                        <div style={{fontSize:10,color:"#475569",marginBottom:1}}>⏱ {tpInfo.min} min</div>
-                        <div style={{fontSize:10,color:"#475569",marginBottom:1}}>🔄 toutes les {tpInfo.freqPk} min (pointe)</div>
-                        <div style={{fontSize:10,color:"#475569",marginBottom:4,lineHeight:1.3}}>{tpInfo.note}</div>
-                        <div style={{marginTop:4,paddingTop:6,borderTop:"1px solid #e2e8f0"}}>
-                          {isFreeTP ? (
-                            <div>
-                              <span style={{fontWeight:700,fontSize:14,color:"#16a34a"}}>GRATUIT 🎉</span>
-                              <div style={{fontSize:9,color:"#16a34a",marginTop:1}}>Ven. 17h–Sam. 24h · isireso-sion</div>
-                            </div>
-                          ) : (
-                            <div>
-                              <span style={{fontWeight:700,fontSize:14,color:"#1e293b"}}>CHF {tpInfo.roundTrip.toFixed(2)}</span>
-                              <div style={{fontSize:9,color:"#94a3b8"}}>aller-retour {halfFare?"(demi-tarif)":"(plein tarif)"}</div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ) : (
-                      <div style={{background:"#fef3c7",borderRadius:10,padding:10,border:"1px solid #fde68a"}}>
-                        <div style={{fontSize:9,fontWeight:700,color:"#92400e",marginBottom:4}}>⚠️ TP LIMITÉS</div>
-                        <div style={{fontSize:10,color:"#78350f",lineHeight:1.4}}>{originObj.tp}</div>
-                        <div style={{marginTop:6,fontSize:10,fontWeight:600,color:"#92400e"}}>Voiture quasi-indispensable</div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* P+R recommendation */}
-                  {originObj.pRec && (() => {
-                    const pr = PARKINGS.find(p=>p.id===originObj.pRec);
-                    if (!pr) return null;
-                    return (
-                      <div style={{background:"#f0fdf4",border:"1px solid #86efac",borderRadius:10,padding:10,marginBottom:12}}>
-                        <div style={{fontSize:10,fontWeight:700,color:"#15803d",marginBottom:4}}>💡 P+R recommandé</div>
-                        <div style={{fontSize:11,fontWeight:600,color:"#166534"}}>{pr.name}</div>
-                        <div style={{fontSize:10,color:"#4ade80",marginTop:2}}>
-                          ✓ Gratuit · {pr.capacity} places · {pr.busLine} → {pr.busDest}
-                        </div>
-                        <div style={{fontSize:10,color:"#166534",marginTop:1}}>🚌 Toutes les {pr.busFreq} min · {pr.busTravelMin} min trajet</div>
-                      </div>
-                    );
-                  })()}
-
-                  {/* Savings */}
-                  {tpInfo && !tpInfo.isTrain && (() => {
-                    const carTotal = pBreakdown.total + fuelCost;
-                    const tpTotal = tpInfo.roundTrip;
-                    const saving = Math.round((carTotal - tpTotal)*100)/100;
-                    if (saving <= 0) return null;
-                    return (
-                      <div style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:10,padding:10,marginBottom:12}}>
-                        <div style={{fontWeight:700,fontSize:13,color:"#1e40af"}}>
-                          Économie TP : CHF {saving.toFixed(2)} / trajet
-                        </div>
-                        <div style={{fontSize:10,color:"#3b82f6",marginTop:2}}>
-                          En prenant le bus au lieu de la voiture ce trajet
-                        </div>
-                      </div>
-                    );
-                  })()}
-
-                  {/* Data source */}
-                  <div style={{fontSize:9,color:"#94a3b8",borderTop:"1px solid #f1f5f9",paddingTop:8}}>
-                    ⚠ Tarifs parking : {parking.source} (confiance {Math.round(parking.conf*100)}%)<br/>
-                    TP : CarPostal horaires 2024-25 · isireso-sion.ch
-                    {parking.conf < 0.80 && <div style={{color:"#f59e0b",marginTop:2}}>⚠ Tarif préférentiel estimé — à confirmer avec sion.ch</div>}
-                  </div>
-                </div>
-              ) : (
-                <div style={{padding:24,textAlign:"center",color:"#94a3b8"}}>
-                  <div style={{fontSize:28,marginBottom:8}}>📍</div>
-                  <div style={{fontSize:13,fontWeight:600,color:"#475569"}}>Sélectionnez une origine</div>
-                  <div style={{fontSize:11,marginTop:4}}>Cliquer sur un village 🍇 sur la carte ou dans la liste</div>
-                </div>
-              )}
-
-              {/* Parking detail popup */}
-              {ppObj && (
-                <div style={{margin:"0 16px 16px",background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:12,padding:12}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
-                    <div style={{fontWeight:700,fontSize:13,color:TYPE_COLOR[ppObj.type]}}>{ppObj.name}</div>
-                    <button onClick={()=>setPopupParking(null)} style={{background:"none",border:"none",cursor:"pointer",fontSize:16,color:"#94a3b8"}}>×</button>
-                  </div>
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:8}}>
-                    <div style={{background:"#fff",borderRadius:8,padding:"6px 8px",textAlign:"center"}}>
-                      <div style={{fontWeight:700,fontSize:18,color:"#1e293b"}}>{ppObj.capacity}</div>
-                      <div style={{fontSize:9,color:"#94a3b8"}}>places</div>
-                    </div>
-                    <div style={{background:ppBreak?.total===0?"#f0fdf4":"#eff6ff",borderRadius:8,padding:"6px 8px",textAlign:"center"}}>
-                      <div style={{fontWeight:700,fontSize:18,color:ppBreak?.total===0?"#16a34a":TYPE_COLOR[ppObj.type]}}>
-                        {ppBreak?.total===0?"GRATUIT":`CHF ${ppBreak?.total.toFixed(2)}`}
-                      </div>
-                      <div style={{fontSize:9,color:"#94a3b8"}}>{durH}h</div>
-                    </div>
-                  </div>
-                  {ppBreak?.lines.map((l,i)=><div key={i} style={{fontSize:10,color:"#475569",marginBottom:2}}>{l}</div>)}
-                  {ppObj.type==="pr"&&<div style={{fontSize:10,color:"#16a34a",marginTop:4}}>🚌 {ppObj.busLine} → {ppObj.busDest} · toutes les {ppObj.busFreq} min</div>}
-                  <div style={{fontSize:9,color:"#94a3b8",marginTop:6}}>📍 {ppObj.address}</div>
-                  <div style={{fontSize:9,color:"#cbd5e1",marginTop:2}}>Source: {ppObj.source}</div>
-                </div>
+                </>
               )}
             </div>
           )}
-
-          {/* ── AGGREGATE TAB ──────────────────────────────────────────── */}
-          {tab === "aggregate" && (
-            <div style={{padding:"12px 16px"}}>
-              <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"8px 10px",marginBottom:12,fontSize:10,color:"#92400e"}}>
-                ⚠ Volumes relatifs estimés · ARE Microrecensement 2015 · Estimation MobilityLab
-              </div>
-
-              {/* Parkings cost table for current settings */}
-              <div style={{marginBottom:16}}>
-                <div style={{fontSize:10,fontWeight:700,color:"#6b7280",textTransform:"uppercase",marginBottom:8}}>
-                  Coût parking · {dayLabel[dayType]} {hour}h · {durH<1?`${durH*60}min`:durH+"h"}
-                </div>
-                {PARKINGS.map(p=>{
-                  const cost = parkCost(p, durH, dayType, hour);
-                  const free = isFreeP(p, dayType, hour);
-                  return (
-                    <div key={p.id} style={{display:"flex",alignItems:"center",marginBottom:5,gap:8}}>
-                      <div style={{width:8,height:8,borderRadius:"50%",background:TYPE_COLOR[p.type],flexShrink:0}}/>
-                      <div style={{flex:1,fontSize:11,color:"#1e293b"}}>{p.short}</div>
-                      <div style={{fontSize:10,color:"#94a3b8"}}>{p.capacity}pl</div>
-                      <div style={{
-                        fontSize:11,fontWeight:700,minWidth:60,textAlign:"right",
-                        color:free||cost===0?"#16a34a":TYPE_COLOR[p.type]
-                      }}>
-                        {free||cost===0 ? "GRATUIT" : `CHF ${cost.toFixed(2)}`}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* OD flows */}
-              <div style={{fontSize:10,fontWeight:700,color:"#6b7280",textTransform:"uppercase",marginBottom:8}}>
-                Principaux flux OD → Centre Sion
-              </div>
-              {FLOWS.map((f,i)=>(
-                <div key={i} style={{marginBottom:10}}>
-                  <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:3}}>
-                    <span style={{fontWeight:600,color:"#1e293b"}}>{f.from}</span>
-                    <span style={{color:f.carDepIdx>0.75?"#dc2626":f.carDepIdx>0.50?"#d97706":"#16a34a",fontWeight:600,fontSize:10}}>
-                      {Math.round(f.carDepIdx*100)}% voiture
-                    </span>
-                  </div>
-                  <div style={{height:6,background:"#f1f5f9",borderRadius:3,overflow:"hidden",marginBottom:3}}>
-                    <div style={{height:"100%",borderRadius:3,background:f.carDepIdx>0.75?"#ef4444":f.carDepIdx>0.50?"#f59e0b":"#22c55e",width:`${f.pct*100}%`}}/>
-                  </div>
-                  <div style={{fontSize:9,color:"#94a3b8"}}>{f.tp}</div>
-                </div>
-              ))}
-
-              {/* Duration cost table */}
-              <div style={{marginTop:16,borderTop:"1px solid #f1f5f9",paddingTop:12}}>
-                <div style={{fontSize:10,fontWeight:700,color:"#6b7280",textTransform:"uppercase",marginBottom:8}}>
-                  Grille tarifaire Planta / Scex (tarif officiel)
-                </div>
-                <div style={{fontSize:9,color:"#94a3b8",marginBottom:8}}>Source: sion.ch PDFs 2024-2025</div>
-                {[[0.5,"30 min"],[1,"1h"],[1.5,"1h30"],[2,"2h"],[3,"3h"],[4,"4h"],[8,"8h"],[12,"12h"]].map(([d,l])=>{
-                  const p = PARKINGS[0];
-                  const normalCost = parkCost(p, d, "weekday", 9);
-                  const friCost = parkCost(p, d, "friday", 17);
-                  return (
-                    <div key={d} style={{display:"flex",borderBottom:"1px solid #f8fafc",padding:"4px 0",fontSize:10}}>
-                      <div style={{flex:1,color:"#475569",fontWeight:600}}>{l}</div>
-                      <div style={{minWidth:80,textAlign:"right",color:normalCost===0?"#16a34a":"#1e3a8a",fontWeight:600}}>
-                        {normalCost===0?"GRATUIT":`CHF ${normalCost.toFixed(2)}`}
-                      </div>
-                      <div style={{minWidth:70,textAlign:"right",color:"#16a34a",fontSize:9}}>ven/sam: 0.—</div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div style={{borderTop:"1px solid #f1f5f9",padding:"8px 16px",fontSize:9,color:"#cbd5e1",flexShrink:0}}>
-          Données: sion.ch · CarPostal 2025 · isireso-sion.ch · ARE · © OSM contributors
         </div>
       </div>
     </div>
