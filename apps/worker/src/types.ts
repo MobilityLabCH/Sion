@@ -1,59 +1,35 @@
-// ─── Types partagés frontend ─────────────────────────────────────────────────
-// Ce fichier est également importé par le worker (via symlink ou copie).
+// ─── Types worker (apps/worker/src/types.ts) ─────────────────────────────────
+// IMPORTANT: Ce fichier est SÉPARÉ de apps/web/src/types.ts
+// Le worker n'a pas accès au DOM ni aux types React
 
 export interface Scenario {
   id?: string;
   name?: string;
+  createdAt?: string;
 
-  // ── Parking centre (Planta/Scex/Cible)
-  // Baseline réel Sion = 3.00 CHF/h après 1ère heure gratuite (source: sion.ch PDFs 2024-2025)
+  // Parking centre (Planta/Scex/Cible)
+  // Baseline réel Sion = CHF 3.00/h après 1ère heure gratuite (sion.ch PDFs 2024-2025)
   centrePeakPriceCHFh:    number;  // 0–10
   centreOffpeakPriceCHFh: number;  // 0–10
 
-  // ── Parking périphérie / P+R
-  // Baseline réel Sion = 0 CHF (P+R Potences 450 pl. + Stade 460 pl., gratuits)
+  // Parking périphérie / P+R (baseline = 0 CHF, P+R Potences+Stade gratuits)
   peripheriePeakPriceCHFh:    number;  // 0–5
   peripherieOffpeakPriceCHFh: number;  // 0–5
 
-  // ── Tarification progressive longue durée
-  // 1.0 = barème officiel actuel (1h gratuit + CHF 3/h)
-  // > 1.0 = majoration supplémentaire sur les heures au-delà de 1h
+  // Progressivité longue durée (1.0 = actuel, > 1.0 = majoration scénario)
   progressiveSlopeFactor: number;  // 1.0–3.0
 
-  // ── TP discount hors-pointe
+  // TP discount hors-pointe
   tpOffpeakDiscountPct: number;    // 0–50 (%)
 
-  // ── Mesures complémentaires
+  // Mesures complémentaires
   enableCovoiturage: boolean;
   enableTAD:         boolean;
   enableTaxiBons:    boolean;
 
-  // ── Objectif principal
+  // Objectif principal
   objective: 'reduce-peak-car' | 'protect-short-stay' | 'equity-access';
 }
-
-/**
- * Situation ACTUELLE de Sion (baseline)
- * Sources: sion.ch/stationnement · PDFs Planta 15.07.2024 + Scex 11.08.2025
- *   - Centre: 1h gratuite + CHF 3.00/h (h2→h11) + CHF 0.20/h (>h11)
- *   - P+R Potences/Stade: GRATUIT, connexion BS 11 toutes les 10 min
- *   - Gratuit vendredi 17h → samedi 24h sur tous les parkings municipaux
- */
-export const DEFAULT_SCENARIO: Scenario = {
-  name: 'Nouveau scénario',
-  centrePeakPriceCHFh:    3.0,   // CHF 3.00/h après 1h gratuite — Planta/Scex actuel
-  centreOffpeakPriceCHFh: 3.0,   // idem (Sion: pas de tarif creux distinct actuellement)
-  peripheriePeakPriceCHFh:    0.0,
-  peripherieOffpeakPriceCHFh: 0.0,
-  progressiveSlopeFactor: 1.0,
-  tpOffpeakDiscountPct:   0,
-  enableCovoiturage: false,
-  enableTAD:         false,
-  enableTaxiBons:    false,
-  objective: 'reduce-peak-car',
-};
-
-// ─── Résultats simulation ────────────────────────────────────────────────────
 
 export interface ModeSplit {
   car:         number;
@@ -64,29 +40,31 @@ export interface ModeSplit {
 }
 
 export interface ZoneResult {
-  zoneId:             string;
-  label:              string;
-  elasticityScore:    number;        // 0–100
-  category:           'vert' | 'orange' | 'rouge';
-  shiftIndex:         number;        // 0–1 : fraction de bascule voiture → alternatives
-  estimatedThreshold?: number;       // CHF/h estimé de déclenchement bascule
-  equityFlag:         boolean;
-  equityReason?:      string;
-  modeSplit:          ModeSplit;
+  zoneId:              string;
+  label:               string;
+  elasticityScore:     number;
+  category:            'vert' | 'orange' | 'rouge';
+  shiftIndex:          number;
+  estimatedThreshold?: number;
+  equityFlag:          boolean;
+  equityReason?:       string;
+  modeSplit:           ModeSplit;
+  occupancyPct?:       number;
+  avgParkingCostCHF?:  number;
 }
 
 export interface PersonaResult {
-  personaId:          string;
-  label:              string;
-  emoji:              string;
-  beforeCostCHF:      number;
-  afterCostCHF:       number;
-  costDeltaCHF:       number;
-  preferredMode:      string;
+  personaId:           string;
+  label:               string;
+  emoji:               string;
+  beforeCostCHF:       number;
+  afterCostCHF:        number;
+  costDeltaCHF:        number;
+  preferredMode:       string;
   preferredModeBefore: string;
-  equityFlag:         boolean;
-  tags:               string[];
-  explanation:        string[];
+  equityFlag:          boolean;
+  tags:                string[];
+  explanation:         string[];
 }
 
 export interface SimulationResults {
@@ -122,6 +100,41 @@ export interface ActionItem {
   priority:    'haute' | 'moyenne' | 'basse';
 }
 
+// ── Données brutes (chargées depuis JSON) ────────────────────────────────────
+
+/**
+ * ParkingData — structure du fichier apps/worker/src/data/parking.json
+ * Chaque entrée représente une ZONE (agrégation de parkings similaires)
+ */
+export interface ParkingData {
+  zoneId:           string;
+  capacity:         number;
+  basePriceCHFh:    number;    // Taux horaire de base (CHF/h)
+  peakMultiplier:   number;    // Multiplicateur heure de pointe
+  offpeakMultiplier: number;   // Multiplicateur heure creuse
+  longStayShare:    number;    // Part de stationnement longue durée (0–1)
+  frictionIndex:    number;    // Friction recherche de place (0–1)
+  notes?:           string;
+}
+
+/**
+ * TPData — structure du fichier apps/worker/src/data/tp.json
+ * Données TP par zone géographique (source: isireso-sion.ch, CarPostal 2025)
+ */
+export interface TPData {
+  zoneId:            string;
+  accessIndex:       number;    // Qualité d'accès TP (0–1, 1=excellent)
+  timeToCenterMin:   number;    // Temps trajet jusqu'au centre (min)
+  peakFreqMin:       number;    // Fréquence en pointe (min entre passages)
+  offpeakFreqMin:    number;    // Fréquence hors pointe
+  ticketBaseCHF:     number;    // Tarif aller plein tarif (CHF) · isireso zones 1–4
+  offpeakDiscountMax: number;   // Remise max hors pointe (0–1)
+  notes?:            string;
+}
+
+/**
+ * Persona — structure du fichier apps/worker/src/data/personas.json
+ */
 export interface Persona {
   id:              string;
   label:           string;
@@ -133,12 +146,12 @@ export interface Persona {
   tpAffinity:        number;
   carDependency:     number;
   typicalTrip: {
-    fromZoneId:  string;
-    toZoneId:    string;
-    timeWindow:  'peak' | 'offpeak';
+    fromZoneId:   string;
+    toZoneId:     string;
+    timeWindow:   'peak' | 'offpeak';
     durationType: 'short' | 'long';
   };
-  tags:       string[];
-  income:     'faible' | 'moyen' | 'élevé';
+  tags:        string[];
+  income:      'faible' | 'moyen' | 'élevé';
   alternatives: string[];
 }
