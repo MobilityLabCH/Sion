@@ -13,59 +13,61 @@ import type {
   ActionsResponse,
 } from '../types';
 
-import { DEFAULT_SCENARIO } from '../types';
+import { DEFAULT_SCENARIO, BASELINE_SCENARIO } from '../types';
 import * as api from '../lib/api';
 import type { TrafficData } from '../lib/api';
 
-/* ─── Types ─────────────────────────────────────────────────────────────────── */
-
 interface AppState {
-  scenario:          Scenario;
-  results:           SimulationResults | null;
-  insights:          InsightsResponse | null;
-  actions:           ActionsResponse | null;
-  trafficData:       TrafficData | null;
-  isSimulating:      boolean;
-  isLoadingInsights: boolean;
-  isLoadingActions:  boolean;
-  isLoadingTraffic:  boolean;
-  error:             string | null;
-  apiOnline:         boolean | null;
+  scenario:            Scenario;
+  baselineScenario:    Scenario;
+  results:             SimulationResults | null;
+  baselineResults:     SimulationResults | null;  // résultats du baseline pour comparaison
+  insights:            InsightsResponse | null;
+  actions:             ActionsResponse | null;
+  trafficData:         TrafficData | null;
+  isSimulating:        boolean;
+  isSimulatingBaseline:boolean;
+  isLoadingInsights:   boolean;
+  isLoadingActions:    boolean;
+  isLoadingTraffic:    boolean;
+  error:               string | null;
+  apiOnline:           boolean | null;
+  compareMode:         boolean;   // afficher baseline vs scénario côte-à-côte
 }
 
 interface AppActions {
-  setScenario:    (s: Scenario) => void;
-  updateScenario: (patch: Partial<Scenario>) => void;
-  runSimulation:  () => Promise<void>;
-  loadInsights:   (includeImprovements?: boolean) => Promise<void>;
-  loadActions:    () => Promise<void>;
-  fetchTraffic:   () => Promise<void>;
-  reset:          () => void;
+  setScenario:         (s: Scenario) => void;
+  updateScenario:      (patch: Partial<Scenario>) => void;
+  runSimulation:       () => Promise<void>;
+  runBaselineSimulation: () => Promise<void>;
+  loadInsights:        (includeImprovements?: boolean) => Promise<void>;
+  loadActions:         () => Promise<void>;
+  fetchTraffic:        () => Promise<void>;
+  setCompareMode:      (v: boolean) => void;
+  reset:               () => void;
 }
 
 type AppContextType = AppState & AppActions;
 
-/* ─── Initial state ──────────────────────────────────────────────────────────── */
-
 const initialState: AppState = {
-  scenario:          DEFAULT_SCENARIO,
-  results:           null,
-  insights:          null,
-  actions:           null,
-  trafficData:       null,
-  isSimulating:      false,
-  isLoadingInsights: false,
-  isLoadingActions:  false,
-  isLoadingTraffic:  false,
-  error:             null,
-  apiOnline:         null,
+  scenario:            DEFAULT_SCENARIO,
+  baselineScenario:    BASELINE_SCENARIO,
+  results:             null,
+  baselineResults:     null,
+  insights:            null,
+  actions:             null,
+  trafficData:         null,
+  isSimulating:        false,
+  isSimulatingBaseline:false,
+  isLoadingInsights:   false,
+  isLoadingActions:    false,
+  isLoadingTraffic:    false,
+  error:               null,
+  apiOnline:           null,
+  compareMode:         false,
 };
 
-/* ─── Context ────────────────────────────────────────────────────────────────── */
-
 const AppContext = createContext<AppContextType | null>(null);
-
-/* ─── Provider ───────────────────────────────────────────────────────────────── */
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AppState>(initialState);
@@ -78,6 +80,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setState(s => ({ ...s, scenario: { ...s.scenario, ...patch } }));
   }, []);
 
+  const setCompareMode = useCallback((v: boolean) => {
+    setState(s => ({ ...s, compareMode: v }));
+  }, []);
+
   const runSimulation = useCallback(async () => {
     setState(s => ({ ...s, isSimulating: true, error: null, insights: null, actions: null }));
     try {
@@ -87,7 +93,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         results,
         isSimulating: false,
         apiOnline: true,
-        // Update trafficData from simulation response if fresher
         trafficData: trafficData ?? s.trafficData,
       }));
     } catch (err: any) {
@@ -99,6 +104,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }));
     }
   }, [state.scenario]);
+
+  // Lance la simulation du baseline officiel pour comparaison
+  const runBaselineSimulation = useCallback(async () => {
+    setState(s => ({ ...s, isSimulatingBaseline: true }));
+    try {
+      const { results } = await api.simulate(state.baselineScenario);
+      setState(s => ({ ...s, baselineResults: results, isSimulatingBaseline: false }));
+    } catch {
+      setState(s => ({ ...s, isSimulatingBaseline: false }));
+    }
+  }, [state.baselineScenario]);
 
   const loadInsights = useCallback(async (includeImprovements = false) => {
     if (!state.results) return;
@@ -122,7 +138,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [state.scenario, state.results]);
 
-  // Fetch TomTom live traffic data
   const fetchTraffic = useCallback(async () => {
     setState(s => ({ ...s, isLoadingTraffic: true }));
     try {
@@ -142,9 +157,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setScenario,
     updateScenario,
     runSimulation,
+    runBaselineSimulation,
     loadInsights,
     loadActions,
     fetchTraffic,
+    setCompareMode,
     reset,
   };
 
@@ -154,8 +171,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     </AppContext.Provider>
   );
 }
-
-/* ─── Hook ───────────────────────────────────────────────────────────────────── */
 
 export function useApp() {
   const ctx = useContext(AppContext);
