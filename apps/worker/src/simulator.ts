@@ -1,4 +1,4 @@
-import type {
+import type { DayType,
   Scenario, SimulationResults, ZoneResult, PersonaResult,
   ModeSplit, ParkingData, TPData, Persona
 } from './types.js';
@@ -43,29 +43,40 @@ function effectiveParkingPrice(
   durationType: 'short' | 'long'
 ): number {
   const durationH = durationType === 'short' ? SHORT_STAY_H : LONG_STAY_H;
+  const dayType = (scenario as any).dayType ?? 'weekday';
+  const startHour: number = (scenario as any).startHour ?? (timeWindow === 'peak' ? 7 : 9);
 
-  // Prix de base selon scénario
+  // Règles officielles structurées (parking.rules[])
+  const rules: any[] | undefined = (parking as any).rules;
+  if (rules && rules.length > 0) {
+    const rule = rules.find((r: any) =>
+      r.dayType === dayType && startHour >= r.startHour && startHour < r.endHour
+    );
+    if (rule) {
+      if (rule.pricePerHour === 0) return 0;
+      if (scenario.progressiveSlopeFactor > 1 && durationType === 'long') {
+        return rule.pricePerHour * 1 + (durationH - 1) * rule.pricePerHour * scenario.progressiveSlopeFactor;
+      }
+      return rule.pricePerHour * durationH;
+    }
+  }
+
+  // Fallback: calcul depuis paramètres scénario
   let basePrice: number;
   if (zoneId === 'centre' || zoneId === 'gare') {
     basePrice = timeWindow === 'peak' ? scenario.centrePeakPriceCHFh : scenario.centreOffpeakPriceCHFh;
   } else if (zoneId === 'peripherie') {
     basePrice = timeWindow === 'peak' ? scenario.peripheriePeakPriceCHFh : scenario.peripherieOffpeakPriceCHFh;
   } else {
-    // Autres zones: interpolation basée sur le prix de base + multiplicateur scénario
-    const scenarioFactor = (scenario.centrePeakPriceCHFh / 2.5) * (timeWindow === 'peak' ? parking.peakMultiplier : parking.offpeakMultiplier);
-    basePrice = parking.basePriceCHFh * scenarioFactor;
+    const f = (scenario.centrePeakPriceCHFh / 2.5) * (timeWindow === 'peak' ? parking.peakMultiplier : parking.offpeakMultiplier);
+    basePrice = parking.basePriceCHFh * f;
   }
 
-  // Prix progressif: majoration après 1ère heure
   if (scenario.progressiveSlopeFactor > 1 && durationType === 'long') {
-    const firstH = basePrice * 1;
-    const remainH = (durationH - 1) * basePrice * scenario.progressiveSlopeFactor;
-    return firstH + remainH;
+    return basePrice * 1 + (durationH - 1) * basePrice * scenario.progressiveSlopeFactor;
   }
-
   return basePrice * durationH;
 }
-
 // ─── Calcul coût par mode pour un persona dans une zone ────────────────────
 
 interface TripCosts {
@@ -392,6 +403,18 @@ export function runSimulation(
     `Shift global estimé: ${(globalShiftIndex * 100).toFixed(0)}%. ` +
     `${equityFlags.length > 0 ? `${equityFlags.length} profil(s) à risque équité détecté(s).` : 'Aucun risque équité majeur identifié.'}`;
 
+  // ── KPIs financiers ─────────────────────────────────────────────────────
+  // Estimation perte recettes : (Planta 570 + Scex 658) × occ × durée × prix
+  // Baseline: 3 CHF/h × 2h × 65% occ = 4.30 CHF/place/j
+  const baselineRevenueCHFday = 3.0 * 2.0 * (570 + 658) * 0.65;
+  const scenarioAvgPriceCentre = (scenario.centrePeakPriceCHFh + scenario.centreOffpeakPriceCHFh) / 2;
+  const newRevenueCHFday = scenarioAvgPriceCentre * 2.0 * (570 + 658) * Math.max(0.2, 0.65 - globalShiftIndex * 0.4);
+  const estimatedRevenueLossCHFyear = Math.round((newRevenueCHFday - baselineRevenueCHFday) * 250); // 250 jours ouvrés
+  const estimatedCostPerVisitorCHF = globalShiftIndex > 0.01
+    ? Math.abs(estimatedRevenueLossCHFyear) / Math.max(1, Math.round(globalShiftIndex * 80000))
+    : 0;
+  const co2SavedTonnesYear = Math.round(globalShiftIndex * 13000 * 300 * 8 * 0.00021 / 1000) / 10;
+
   return {
     scenarioId,
     timestamp,
@@ -401,5 +424,8 @@ export function runSimulation(
     equityFlags,
     hypotheses,
     summary,
+    estimatedRevenueLossCHFyear,
+    estimatedCostPerVisitorCHF: Math.round(estimatedCostPerVisitorCHF * 10) / 10,
+    co2SavedTonnesYear,
   };
 }
