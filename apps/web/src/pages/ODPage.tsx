@@ -182,7 +182,8 @@ function ODSimulator() {
 
   // Fetch origins
   useEffect(() => {
-    fetchData()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (fetchData() as Promise<any>)
       .then((data: any) => { setOrigins(data.origins ?? []); setLoading(false); })
       .catch(() => setLoading(false));
   }, []);
@@ -262,9 +263,10 @@ function ODSimulator() {
     if (!selected) return;
 
     const dCoord = DEST_COORDS[dest];
-    const addArc = (srcId: string, lyrId: string, from: [number, number], to: [number, number], paint: maplibregl.LinePaint) => {
+    const addArc = (srcId: string, lyrId: string, from: [number, number], to: [number, number], paint: Record<string, unknown>) => {
       map.addSource(srcId, { type: 'geojson', data: { type: 'Feature', geometry: { type: 'LineString', coordinates: bezierArc(from, to) }, properties: {} } });
-      map.addLayer({ id: lyrId, type: 'line', source: srcId, paint });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      map.addLayer({ id: lyrId, type: 'line', source: srcId, paint: paint as any });
       arcSrcsRef.current.push(srcId); arcLyrsRef.current.push(lyrId);
     };
 
