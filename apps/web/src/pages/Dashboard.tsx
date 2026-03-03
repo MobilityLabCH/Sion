@@ -1,297 +1,443 @@
-import { useEffect } from 'react';
+import { useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../hooks/store';
 import ZoneMap from '../components/ZoneMap.tsx';
 import KPICard from '../components/KPICard.tsx';
 import CategoryPill from '../components/CategoryPill.tsx';
+import SliderField from '../components/SliderField.tsx';
+import ToggleField from '../components/ToggleField.tsx';
+import type { Scenario, DayType, Objective } from '../types';
+import { BASELINE_SCENARIO } from '../types';
 
-const SEVERITY_CONFIG = {
-  fluide:  { color: 'text-green-600',  bg: 'bg-green-50  border-green-200',  dot: 'bg-green-500',  label: '🟢 Fluide' },
-  modéré:  { color: 'text-amber-600',  bg: 'bg-amber-50  border-amber-200',  dot: 'bg-amber-500',  label: '🟡 Modéré' },
-  dense:   { color: 'text-orange-600', bg: 'bg-orange-50 border-orange-200', dot: 'bg-orange-500', label: '🟠 Dense' },
-  bloqué:  { color: 'text-red-600',    bg: 'bg-red-50    border-red-200',    dot: 'bg-red-500',    label: '🔴 Bloqué' },
+const SEV = {
+  fluide:  { color: 'text-green-600',  bg: 'bg-green-50  border-green-200',  dot: 'bg-green-500',  label: 'Fluide' },
+  modéré:  { color: 'text-amber-600',  bg: 'bg-amber-50  border-amber-200',  dot: 'bg-amber-500',  label: 'Modéré' },
+  dense:   { color: 'text-orange-600', bg: 'bg-orange-50 border-orange-200', dot: 'bg-orange-500', label: 'Dense' },
+  bloqué:  { color: 'text-red-600',    bg: 'bg-red-50    border-red-200',    dot: 'bg-red-500',    label: 'Bloqué' },
 } as const;
 
+const DAY_OPTIONS: { value: DayType; label: string; note?: string }[] = [
+  { value: 'weekday', label: 'Lun–Jeu', note: 'normal' },
+  { value: 'friday',  label: 'Vendredi', note: '⚡ gratuit dès 17h' },
+  { value: 'saturday',label: 'Samedi',   note: '⚡ gratuit (actuel)' },
+  { value: 'sunday',  label: 'Dimanche' },
+];
+
+const OBJECTIVES: { value: Objective; label: string; icon: string }[] = [
+  { value: 'reduce-peak-car',    label: 'Réduire voiture pointe', icon: '🚗' },
+  { value: 'protect-short-stay', label: 'Protéger commerces',     icon: '🛍' },
+  { value: 'equity-access',      label: 'Équité & accès',         icon: '⚖️' },
+  { value: 'attractivity',       label: 'Attractivité centre',    icon: '🏙' },
+  { value: 'revenue',            label: 'Recettes parking',       icon: '💰' },
+];
+
+const BASELINE_PRESETS = [
+  { label: 'Gratuité vendredi/samedi', note: 'Mesure actuelle 2025', scenario: BASELINE_SCENARIO, icon: '📍' },
+  { label: 'Tarifs normaux', note: 'Sans aucune gratuité', icon: '💶',
+    scenario: { ...BASELINE_SCENARIO, enableFreeBus: false, dayType: 'weekday' as DayType,
+      centrePeakPriceCHFh: 3.0, centreOffpeakPriceCHFh: 1.5,
+      name: 'Sans gratuité — tarifs normaux' } },
+  { label: 'Bus gratuits seulement', note: 'Parking payant + bus offert', icon: '🚌',
+    scenario: { ...BASELINE_SCENARIO, enableFreeBus: true, centrePeakPriceCHFh: 3.0,
+      name: 'Bus gratuits, parking payant' } },
+  { label: 'Tarification dynamique', note: 'Prix selon saturation', icon: '⚡',
+    scenario: { ...BASELINE_SCENARIO, centrePeakPriceCHFh: 4.5, centreOffpeakPriceCHFh: 1.0,
+      progressiveSlopeFactor: 1.5, enableFreeBus: false, dayType: 'weekday' as DayType,
+      name: 'Tarification dynamique forte' } },
+];
+
+function DeltaBadge({ val, unit = '%', invert = false }: { val: number; unit?: string; invert?: boolean }) {
+  const good = invert ? val < 0 : val > 0;
+  const color = Math.abs(val) < 0.5 ? 'text-ink-400' : good ? 'text-green-600' : 'text-red-600';
+  const sign = val > 0 ? '+' : '';
+  return <span className={`text-xs font-mono font-semibold ${color}`}>{sign}{val.toFixed(1)}{unit}</span>;
+}
+
 export default function Dashboard() {
-  const { results, scenario, isSimulating, trafficData, isLoadingTraffic, fetchTraffic } = useApp();
+  const {
+    scenario, updateScenario, setScenario,
+    results, baselineResults, isSimulating,
+    runSimulation, runBaselineSimulation,
+    trafficData, isLoadingTraffic, fetchTraffic,
+    compareMode, setCompareMode,
+  } = useApp();
   const navigate = useNavigate();
 
-  // Fetch traffic on mount and every 2 minutes
   useEffect(() => {
     fetchTraffic();
-    const interval = setInterval(fetchTraffic, 120_000);
-    return () => clearInterval(interval);
+    const iv = setInterval(fetchTraffic, 120_000);
+    return () => clearInterval(iv);
   }, []);
 
-  const severity = trafficData?.connected ? (trafficData.severity ?? 'fluide') : null;
-  const sevConfig = severity ? SEVERITY_CONFIG[severity] : null;
+  // Lancer aussi le baseline au premier chargement
+  useEffect(() => {
+    if (!baselineResults) runBaselineSimulation();
+  }, []);
+
+  const handleSimulate = useCallback(async () => {
+    await runSimulation();
+  }, [runSimulation]);
+
+  const applyPreset = (s: Scenario) => {
+    setScenario({ ...s });
+  };
+
+  const sev = trafficData?.connected ? (trafficData.severity ?? 'fluide') : null;
+  const sevCfg = sev ? SEV[sev] : null;
+
+  const shift = results ? (results.globalShiftIndex * 100) : null;
+  const bShift = baselineResults ? (baselineResults.globalShiftIndex * 100) : null;
+  const shiftDelta = shift !== null && bShift !== null ? shift - bShift : null;
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 space-y-8">
-      {/* Hero */}
-      <div className="animate-fade-up">
-        <div className="flex items-start justify-between gap-4 flex-wrap">
-          <div>
-            <h1 className="section-title">Tableau de bord</h1>
-            <p className="text-ink-500 mt-1 text-sm">
-              Simulateur de tarification mobilité — Sion (Valais)
-            </p>
-          </div>
-          <div className="flex items-center gap-3 flex-wrap">
-            {/* TomTom Traffic Badge */}
-            {isLoadingTraffic ? (
-              <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-ink-50 border border-ink-200 text-xs text-ink-400">
-                <span className="w-1.5 h-1.5 rounded-full bg-ink-300 animate-pulse" />
-                Trafic en chargement…
-              </div>
-            ) : trafficData?.connected ? (
-              <div className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-medium ${sevConfig?.bg}`}>
-                <span className={`w-2 h-2 rounded-full ${sevConfig?.dot} animate-pulse`} />
-                <span className={sevConfig?.color}>
-                  Trafic Sion · {sevConfig?.label}
-                </span>
-                <span className="text-ink-400 font-normal">
-                  {trafficData.currentSpeed} km/h
-                  {trafficData.congestionIdx !== undefined && trafficData.congestionIdx > 0
-                    ? ` · ${trafficData.congestionIdx}% congestion`
-                    : ''}
-                </span>
-              </div>
-            ) : (
-              <button
-                onClick={fetchTraffic}
-                className="flex items-center gap-2 px-3 py-2 rounded-xl bg-ink-50 border border-ink-200 text-xs text-ink-400 hover:bg-ink-100 transition-colors"
-                title={trafficData?.error}
-              >
-                <span className="w-1.5 h-1.5 rounded-full bg-ink-300" />
-                TomTom non connecté · Réessayer
-              </button>
-            )}
-            <button
-              onClick={() => navigate('/scenario')}
-              className="btn-primary flex-shrink-0"
-            >
-              <span>+</span> Nouveau scénario
-            </button>
-          </div>
-        </div>
+    <div className="min-h-screen flex flex-col bg-ink-50">
+      {/* ── HEADER STATUT ──────────────────────────────────────────────── */}
+      <div className="bg-white border-b border-ink-100 px-4 py-2 flex items-center gap-3 text-xs flex-wrap">
+        <span className="font-semibold text-ink">Sion Mobility · Outil d'aide à la décision</span>
+        <span className="text-ink-300">|</span>
+
+        {/* TomTom badge */}
+        {isLoadingTraffic ? (
+          <span className="text-ink-400 flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-ink-300 animate-pulse" /> Trafic…
+          </span>
+        ) : trafficData?.connected ? (
+          <span className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full border font-medium ${sevCfg?.bg}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${sevCfg?.dot} animate-pulse`} />
+            <span className={sevCfg?.color}>Trafic {sevCfg?.label} · {trafficData.currentSpeed} km/h</span>
+          </span>
+        ) : (
+          <button onClick={fetchTraffic} className="text-ink-400 hover:text-ink underline">
+            TomTom non connecté · Réessayer
+          </button>
+        )}
+
+        {/* Badge données */}
+        <span className="ml-auto flex items-center gap-2">
+          <span className="px-1.5 py-0.5 rounded bg-green-50 border border-green-200 text-green-700 font-mono">✓ RÉEL</span>
+          <span className="text-ink-300">parkings officiels sion.ch 2025</span>
+          <span className="px-1.5 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-700 font-mono">⚠ ESTIMÉ</span>
+          <span className="text-ink-300">comportements (modèle logit)</span>
+        </span>
       </div>
 
-      {/* TomTom Traffic Detail Card (si données disponibles) */}
-      {trafficData?.connected && (
-        <div className="animate-fade-up">
-          <div className="card p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold text-ink-500 uppercase tracking-wide">
-                  🗺 Trafic live — Sion centre (Grand-Pont)
-                </span>
-                <span className="text-xs text-ink-300">via TomTom Traffic API</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-ink-400">
-                  {trafficData.timestamp
-                    ? new Date(trafficData.timestamp).toLocaleTimeString('fr-CH', { hour: '2-digit', minute: '2-digit' })
-                    : ''}
-                </span>
+      {/* ── LAYOUT 3 COLONNES ──────────────────────────────────────────── */}
+      <div className="flex flex-1 overflow-hidden" style={{ height: 'calc(100vh - 100px)' }}>
+
+        {/* ── COL GAUCHE : Paramètres ───────────────────────────────── */}
+        <div className="w-72 flex-shrink-0 bg-white border-r border-ink-100 overflow-y-auto flex flex-col">
+          <div className="p-4 border-b border-ink-50">
+            <div className="label-sm mb-3">Scénarios types</div>
+            <div className="grid grid-cols-2 gap-1.5">
+              {BASELINE_PRESETS.map(p => (
                 <button
-                  onClick={fetchTraffic}
-                  className="text-xs text-ink-400 hover:text-ink transition-colors"
-                  title="Rafraîchir"
+                  key={p.label}
+                  onClick={() => applyPreset(p.scenario)}
+                  className={`text-left p-2 rounded-lg border text-xs transition-all ${
+                    scenario.name === p.scenario.name
+                      ? 'border-accent bg-accent-50 text-accent'
+                      : 'border-ink-200 hover:border-accent-300 hover:bg-accent-50 text-ink'
+                  }`}
                 >
-                  ↺
+                  <div className="text-base mb-0.5">{p.icon}</div>
+                  <div className="font-semibold leading-tight">{p.label}</div>
+                  <div className="text-ink-400 mt-0.5 text-[10px]">{p.note}</div>
                 </button>
-              </div>
+              ))}
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              <div className="text-center p-2 rounded-lg bg-ink-50">
-                <div className="text-lg font-bold text-ink font-mono">{trafficData.currentSpeed}</div>
-                <div className="text-xs text-ink-400">km/h actuel</div>
-              </div>
-              <div className="text-center p-2 rounded-lg bg-ink-50">
-                <div className="text-lg font-bold text-ink-400 font-mono">{trafficData.freeFlowSpeed}</div>
-                <div className="text-xs text-ink-400">km/h fluide</div>
-              </div>
-              <div className="text-center p-2 rounded-lg bg-ink-50">
-                <div className={`text-lg font-bold font-mono ${
-                  (trafficData.congestionIdx ?? 0) < 20 ? 'text-green-600' :
-                  (trafficData.congestionIdx ?? 0) < 50 ? 'text-amber-600' : 'text-red-600'
-                }`}>{trafficData.congestionIdx ?? 0}%</div>
-                <div className="text-xs text-ink-400">congestion</div>
-              </div>
-              <div className="text-center p-2 rounded-lg bg-ink-50">
-                <div className="text-lg font-bold text-ink font-mono">
-                  {Math.round((trafficData.confidence ?? 0) * 100)}%
+          </div>
+
+          {/* Fenêtre temporelle */}
+          <div className="p-4 border-b border-ink-50">
+            <div className="label-sm mb-2">Jour & heure</div>
+            <div className="grid grid-cols-2 gap-1 mb-3">
+              {DAY_OPTIONS.map(d => (
+                <button
+                  key={d.value}
+                  onClick={() => updateScenario({ dayType: d.value })}
+                  className={`text-xs p-1.5 rounded-lg border text-center transition-all ${
+                    scenario.dayType === d.value
+                      ? 'border-accent bg-accent-50 text-accent font-semibold'
+                      : 'border-ink-200 text-ink hover:border-accent-300'
+                  }`}
+                >
+                  <div>{d.label}</div>
+                  {d.note && <div className="text-[9px] text-amber-600">{d.note}</div>}
+                </button>
+              ))}
+            </div>
+            <div className="space-y-1 text-xs text-ink-500">
+              <div className="flex items-center justify-between">
+                <span>Début</span>
+                <div className="flex items-center gap-1">
+                  <input type="range" min={0} max={23} value={scenario.startHour}
+                    onChange={e => updateScenario({ startHour: +e.target.value })}
+                    className="w-24 slider-track" />
+                  <span className="font-mono w-8 text-right">{scenario.startHour}h</span>
                 </div>
-                <div className="text-xs text-ink-400">fiabilité</div>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Fin</span>
+                <div className="flex items-center gap-1">
+                  <input type="range" min={0} max={24} value={scenario.endHour}
+                    onChange={e => updateScenario({ endHour: +e.target.value })}
+                    className="w-24 slider-track" />
+                  <span className="font-mono w-8 text-right">{scenario.endHour}h</span>
+                </div>
               </div>
             </div>
-            {trafficData.note && (
-              <p className="text-xs text-ink-300 mt-2 italic">{trafficData.note}</p>
+          </div>
+
+          {/* Objectif */}
+          <div className="p-4 border-b border-ink-50">
+            <div className="label-sm mb-2">Objectif politique</div>
+            <div className="space-y-1">
+              {OBJECTIVES.map(o => (
+                <button
+                  key={o.value}
+                  onClick={() => updateScenario({ objective: o.value as Objective })}
+                  className={`w-full text-left text-xs flex items-center gap-2 px-2 py-1.5 rounded-lg transition-all ${
+                    scenario.objective === o.value
+                      ? 'bg-accent text-white'
+                      : 'text-ink hover:bg-ink-50'
+                  }`}
+                >
+                  <span>{o.icon}</span>
+                  <span>{o.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Tarifs */}
+          <div className="p-4 border-b border-ink-50 space-y-4">
+            <div className="label-sm">Tarifs parking</div>
+            <SliderField
+              label="Centre — Pointe" value={scenario.centrePeakPriceCHFh}
+              min={0} max={6} step={0.5} unit=" CHF/h"
+              onChange={v => updateScenario({ centrePeakPriceCHFh: v })}
+              referenceValue={3.0} referenceLabel="actuel"
+            />
+            <SliderField
+              label="Centre — Creux" value={scenario.centreOffpeakPriceCHFh}
+              min={0} max={4} step={0.5} unit=" CHF/h"
+              onChange={v => updateScenario({ centreOffpeakPriceCHFh: v })}
+              referenceValue={1.5} referenceLabel="actuel"
+            />
+            <SliderField
+              label="P+R / Périphérie" value={scenario.peripheriePeakPriceCHFh}
+              min={0} max={3} step={0.25} unit=" CHF/h"
+              onChange={v => updateScenario({ peripheriePeakPriceCHFh: v })}
+              referenceValue={0} referenceLabel="gratuit"
+            />
+          </div>
+
+          {/* Alternatives */}
+          <div className="p-4 space-y-3">
+            <div className="label-sm">Alternatives & mesures</div>
+            <ToggleField label="Bus gratuits" description="Vendredi soir + samedi (mesure actuelle)" value={scenario.enableFreeBus} onChange={v => updateScenario({ enableFreeBus: v })} icon="🚌" />
+            <ToggleField label="Covoiturage" description="Stimuler offre Sion-Région" value={scenario.enableCovoiturage} onChange={v => updateScenario({ enableCovoiturage: v })} icon="🚗" />
+            <ToggleField label="TAD Valais" description="Taxibus inter-zones" value={scenario.enableTAD} onChange={v => updateScenario({ enableTAD: v })} icon="🚕" />
+            <ToggleField label="Taxi-bons" description="PMR & revenus modestes" value={scenario.enableTaxiBons} onChange={v => updateScenario({ enableTaxiBons: v })} icon="🎫" />
+          </div>
+
+          {/* Bouton simuler */}
+          <div className="p-4 mt-auto border-t border-ink-100">
+            <button
+              onClick={handleSimulate}
+              disabled={isSimulating}
+              className="btn-primary w-full justify-center disabled:opacity-50"
+            >
+              {isSimulating ? (
+                <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Calcul…</>
+              ) : '▷ Simuler ce scénario'}
+            </button>
+            <div className="flex items-center gap-2 mt-2">
+              <label className="text-xs text-ink-400 flex items-center gap-1.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={compareMode}
+                  onChange={e => setCompareMode(e.target.checked)}
+                  className="rounded"
+                />
+                Comparer vs baseline
+              </label>
+            </div>
+          </div>
+        </div>
+
+        {/* ── CARTE CENTRALE ────────────────────────────────────────── */}
+        <div className="flex-1 flex flex-col min-w-0">
+          <div className="p-3 bg-white border-b border-ink-100 flex items-center justify-between">
+            <div>
+              <span className="font-semibold text-sm text-ink">Carte des zones — Sion</span>
+              <span className="ml-2 text-xs text-ink-400">
+                {results
+                  ? `${scenario.name} · ${scenario.dayType} ${scenario.startHour}h–${scenario.endHour}h`
+                  : 'Simulez un scénario pour colorer la carte'}
+              </span>
+            </div>
+            {results && (
+              <button onClick={() => navigate('/resultats')} className="btn-ghost text-xs">
+                Détail complet →
+              </button>
+            )}
+          </div>
+          <div className="flex-1 relative">
+            <ZoneMap
+              zoneResults={results?.zoneResults}
+              height="100%"
+              className="absolute inset-0 rounded-none"
+            />
+            {!results && (
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <div className="bg-white/90 backdrop-blur rounded-xl p-6 text-center shadow-lg max-w-xs">
+                  <div className="text-4xl mb-3">◈</div>
+                  <div className="font-semibold text-ink">Aucune simulation</div>
+                  <div className="text-xs text-ink-500 mt-1">Configurez le scénario à gauche et cliquez sur Simuler</div>
+                </div>
+              </div>
             )}
           </div>
         </div>
-      )}
 
-      {/* Layout: Map + right panel */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Map */}
-        <div className="lg:col-span-2 animate-fade-up animate-fade-up-delay-1">
-          <div className="card p-0 overflow-hidden">
-            <div className="p-4 border-b border-ink-100 flex items-center justify-between">
-              <div>
-                <h2 className="font-semibold text-sm text-ink">Carte des zones — Sion</h2>
-                <p className="text-xs text-ink-400 mt-0.5">
-                  {results
-                    ? 'Colorée selon potentiel de bascule modale (Vert / Orange / Rouge)'
-                    : 'Simulez un scénario pour voir les résultats par zone'}
-                </p>
-              </div>
-              {results && (
-                <button
-                  onClick={() => navigate('/resultats')}
-                  className="btn-ghost text-xs"
-                >
-                  Voir détail →
-                </button>
-              )}
+        {/* ── COL DROITE : KPIs ─────────────────────────────────────── */}
+        <div className="w-72 flex-shrink-0 bg-white border-l border-ink-100 overflow-y-auto p-4 space-y-4">
+
+          {/* Titre scénario actif */}
+          <div>
+            <div className="label-sm mb-1">Scénario actif</div>
+            <div className="text-sm font-semibold text-ink leading-tight">{scenario.name}</div>
+            <div className="text-xs text-ink-400 mt-0.5">
+              {scenario.dayType} · {scenario.startHour}h–{scenario.endHour}h
+              {scenario.enableFreeBus ? ' · Bus gratuits ✓' : ''}
             </div>
-            <ZoneMap zoneResults={results?.zoneResults} height="380px" />
           </div>
-        </div>
 
-        {/* Right: KPIs */}
-        <div className="space-y-4 animate-fade-up animate-fade-up-delay-2">
           {results ? (
             <>
-              <KPICard
-                label="Shift global estimé"
-                value={(results.globalShiftIndex * 100).toFixed(0)}
-                unit="%"
-                color={results.globalShiftIndex > 0.3 ? 'green' : results.globalShiftIndex > 0.15 ? 'orange' : 'red'}
-                description="Part de trajets voiture susceptible de basculer vers des alternatives"
-              />
-
-              <div className="card p-5">
-                <div className="label-sm mb-3">Zones par catégorie</div>
-                <div className="space-y-2.5">
-                  {(['vert', 'orange', 'rouge'] as const).map(cat => {
-                    const zones = results.zoneResults.filter(z => z.category === cat);
-                    if (zones.length === 0) return null;
-                    return (
-                      <div key={cat} className="flex items-center justify-between">
-                        <CategoryPill category={cat} />
-                        <div className="text-right">
-                          <span className="text-sm font-semibold text-ink">{zones.length}</span>
-                          <span className="text-xs text-ink-400 ml-1">zone{zones.length > 1 ? 's' : ''}</span>
-                        </div>
-                      </div>
-                    );
-                  })}
+              {/* KPI principal */}
+              <div className={`rounded-xl p-4 border ${
+                (results.globalShiftIndex * 100) > 30
+                  ? 'bg-green-50 border-green-200'
+                  : (results.globalShiftIndex * 100) > 15
+                  ? 'bg-amber-50 border-amber-200'
+                  : 'bg-red-50 border-red-200'
+              }`}>
+                <div className="text-xs text-ink-500 mb-1">Report modal global</div>
+                <div className="text-3xl font-bold font-mono text-ink">
+                  {(results.globalShiftIndex * 100).toFixed(0)}%
                 </div>
+                <div className="text-xs text-ink-500 mt-0.5">voiture → alternatives</div>
+                {compareMode && shiftDelta !== null && (
+                  <div className="mt-2 pt-2 border-t border-ink-200">
+                    <span className="text-xs text-ink-400">vs baseline : </span>
+                    <DeltaBadge val={shiftDelta} />
+                  </div>
+                )}
               </div>
 
-              {results.equityFlags.length > 0 && (
-                <div className="card p-4 border-red-200 bg-red-50">
-                  <div className="flex items-start gap-2">
-                    <span className="text-red-500 mt-0.5">⚠</span>
-                    <div>
-                      <div className="text-sm font-semibold text-red-700">Risques équité</div>
-                      <div className="text-xs text-red-600 mt-1 space-y-0.5">
-                        {results.equityFlags.map(f => (
-                          <div key={f}>• {f}</div>
-                        ))}
-                      </div>
-                    </div>
+              {/* KPIs grille */}
+              <div className="grid grid-cols-2 gap-2">
+                <KPICard
+                  label="Zones fort potentiel"
+                  value={results.zoneResults.filter(z => z.category === 'vert').length}
+                  unit={`/${results.zoneResults.length}`}
+                  color="green"
+                />
+                <KPICard
+                  label="Risques équité"
+                  value={results.equityFlags.length}
+                  color={results.equityFlags.length > 0 ? 'red' : 'green'}
+                />
+                {results.estimatedRevenueLossCHFyear !== undefined && (
+                  <KPICard
+                    label="Perte recettes/an"
+                    value={Math.abs(results.estimatedRevenueLossCHFyear / 1000).toFixed(0)}
+                    unit="k CHF"
+                    color={results.estimatedRevenueLossCHFyear < 0 ? 'red' : 'green'}
+                  />
+                )}
+                {results.co2SavedTonnesYear !== undefined && (
+                  <KPICard
+                    label="CO₂ évité/an"
+                    value={results.co2SavedTonnesYear}
+                    unit=" t"
+                    color="green"
+                  />
+                )}
+              </div>
+
+              {/* Comparaison baseline côte-à-côte */}
+              {compareMode && baselineResults && (
+                <div className="rounded-xl border border-ink-200 overflow-hidden">
+                  <div className="bg-ink-50 px-3 py-1.5 text-xs font-semibold text-ink-500 uppercase tracking-wide">
+                    Comparaison vs baseline
+                  </div>
+                  <div className="divide-y divide-ink-50">
+                    {results.zoneResults.map(z => {
+                      const b = baselineResults.zoneResults.find(bz => bz.zoneId === z.zoneId);
+                      if (!b) return null;
+                      const delta = (z.shiftIndex - b.shiftIndex) * 100;
+                      return (
+                        <div key={z.zoneId} className="flex items-center justify-between px-3 py-1.5">
+                          <span className="text-xs text-ink">{z.label}</span>
+                          <div className="flex items-center gap-1.5">
+                            <CategoryPill category={z.category} />
+                            <DeltaBadge val={delta} />
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
 
-              <div className="card p-4">
-                <div className="label-sm mb-2">Dernier scénario</div>
-                <div className="text-sm font-medium text-ink">{scenario.name || 'Sans nom'}</div>
-                <div className="text-xs text-ink-400 mt-1 space-y-0.5">
-                  <div>Centre pointe: {scenario.centrePeakPriceCHFh} CHF/h</div>
-                  <div>Centre creux: {scenario.centreOffpeakPriceCHFh} CHF/h</div>
-                  <div>Rabais TP: {scenario.tpOffpeakDiscountPct}%</div>
+              {/* Zones */}
+              <div className="rounded-xl border border-ink-100 overflow-hidden">
+                <div className="bg-ink-50 px-3 py-1.5 label-sm">Zones</div>
+                <div className="divide-y divide-ink-50">
+                  {results.zoneResults.map(z => (
+                    <div key={z.zoneId} className="flex items-center justify-between px-3 py-2">
+                      <span className="text-xs text-ink">{z.label}</span>
+                      <div className="flex items-center gap-1.5">
+                        <CategoryPill category={z.category} />
+                        <span className="text-xs font-mono text-ink-400">{(z.shiftIndex * 100).toFixed(0)}%</span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-                <div className="flex gap-2 mt-3">
-                  <button onClick={() => navigate('/scenario')} className="btn-ghost text-xs px-3 py-1.5">
-                    Modifier
-                  </button>
-                  <button onClick={() => navigate('/resultats')} className="btn-secondary text-xs px-3 py-1.5">
-                    Résultats →
-                  </button>
+              </div>
+
+              {/* Alertes équité */}
+              {results.equityFlags.length > 0 && (
+                <div className="rounded-xl border border-red-200 bg-red-50 p-3">
+                  <div className="text-xs font-semibold text-red-700 mb-1">⚠ Risques équité</div>
+                  {results.equityFlags.map(f => (
+                    <div key={f} className="text-xs text-red-600">• {f}</div>
+                  ))}
                 </div>
+              )}
+
+              {/* Actions rapides */}
+              <div className="space-y-1.5">
+                <button onClick={() => navigate('/resultats')} className="btn-secondary w-full text-xs justify-center">
+                  Résultats détaillés
+                </button>
+                <button onClick={() => navigate('/personas')} className="btn-ghost w-full text-xs justify-center">
+                  Impact par persona
+                </button>
+                <button onClick={() => navigate('/actions')} className="btn-ghost w-full text-xs justify-center">
+                  Plan d'actions
+                </button>
               </div>
             </>
           ) : (
-            <div className="card p-6 text-center space-y-4">
-              <div className="w-12 h-12 rounded-2xl bg-accent-50 flex items-center justify-center mx-auto">
-                <span className="text-2xl">◈</span>
-              </div>
-              <div>
-                <h3 className="font-semibold text-ink">Aucune simulation</h3>
-                <p className="text-sm text-ink-500 mt-1">
-                  Configurez et lancez votre premier scénario pour visualiser les résultats.
-                </p>
-              </div>
-              <button
-                onClick={() => navigate('/scenario')}
-                className="btn-primary w-full justify-center"
-                disabled={isSimulating}
-              >
-                {isSimulating ? 'Simulation…' : '+ Nouveau scénario'}
-              </button>
+            <div className="text-center py-8 text-ink-400">
+              <div className="text-4xl mb-3">◈</div>
+              <div className="text-sm">Lancez une simulation pour voir les KPIs</div>
             </div>
           )}
-        </div>
-      </div>
-
-      {/* Summary */}
-      {results && (
-        <div className="card p-6 animate-fade-up animate-fade-up-delay-3">
-          <div className="label-sm mb-2">Synthèse</div>
-          <p className="text-sm text-ink-700 leading-relaxed">{results.summary}</p>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <button onClick={() => navigate('/resultats')} className="btn-secondary text-xs">
-              Résultats détaillés →
-            </button>
-            <button onClick={() => navigate('/personas')} className="btn-ghost text-xs">
-              Impact personas →
-            </button>
-            <button onClick={() => navigate('/actions')} className="btn-ghost text-xs">
-              Plan d'actions →
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Legend */}
-      <div className="card p-5 animate-fade-up animate-fade-up-delay-4">
-        <div className="label-sm mb-4">Légende méthodologique</div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="flex gap-3">
-            <div className="w-3 h-3 rounded-full bg-green-500 flex-shrink-0 mt-1" />
-            <div>
-              <div className="text-sm font-medium text-ink">Vert — Fort potentiel</div>
-              <div className="text-xs text-ink-500">Élasticité ≥ 60/100. Conditions favorables à la bascule modale.</div>
-            </div>
-          </div>
-          <div className="flex gap-3">
-            <div className="w-3 h-3 rounded-full bg-amber-500 flex-shrink-0 mt-1" />
-            <div>
-              <div className="text-sm font-medium text-ink">Orange — Potentiel modéré</div>
-              <div className="text-xs text-ink-500">Élasticité 35–59/100. Nécessite mesures complémentaires.</div>
-            </div>
-          </div>
-          <div className="flex gap-3">
-            <div className="w-3 h-3 rounded-full bg-red-500 flex-shrink-0 mt-1" />
-            <div>
-              <div className="text-sm font-medium text-ink">Rouge — Faible potentiel</div>
-              <div className="text-xs text-ink-500">Élasticité &lt; 35/100. Dépendance auto structurelle forte.</div>
-            </div>
-          </div>
         </div>
       </div>
     </div>
