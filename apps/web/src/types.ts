@@ -1,19 +1,54 @@
 // ─── Types partagés frontend ─────────────────────────────────────────────────
 
+export type DayType = 'weekday' | 'friday' | 'saturday' | 'sunday';
+export type Objective = 'reduce-peak-car' | 'protect-short-stay' | 'equity-access' | 'attractivity' | 'revenue';
+
 export interface Scenario {
   id?: string;
   name?: string;
+
+  // Tarifs parking
   centrePeakPriceCHFh: number;
   centreOffpeakPriceCHFh: number;
   peripheriePeakPriceCHFh: number;
   peripherieOffpeakPriceCHFh: number;
   progressiveSlopeFactor: number;
+
+  // Fenêtre temporelle
+  dayType: DayType;
+  startHour: number;
+  endHour: number;
+
+  // TP & alternatives
   tpOffpeakDiscountPct: number;
   enableCovoiturage: boolean;
   enableTAD: boolean;
   enableTaxiBons: boolean;
-  objective: 'reduce-peak-car' | 'protect-short-stay' | 'equity-access';
+  enableFreeBus: boolean;   // gratuité bus (vendredi/samedi Sion)
+
+  // Objectif politique
+  objective: Objective;
 }
+
+// ── Baseline officielle : gratuité vendredi dès 17h + samedi toute la journée
+// Source: Ville de Sion, arrêté Conseil Communal 2023
+export const BASELINE_SCENARIO: Scenario = {
+  name: 'Baseline — Gratuité vendredi/samedi (actuel 2025)',
+  centrePeakPriceCHFh: 3.0,
+  centreOffpeakPriceCHFh: 1.5,
+  peripheriePeakPriceCHFh: 0.0,
+  peripherieOffpeakPriceCHFh: 0.0,
+  progressiveSlopeFactor: 1.0,
+  dayType: 'friday',
+  startHour: 17,
+  endHour: 24,
+  tpOffpeakDiscountPct: 0,
+  enableCovoiturage: false,
+  enableTAD: false,
+  enableTaxiBons: false,
+  enableFreeBus: true,   // bus gratuits vendredi soir + samedi
+  objective: 'attractivity',
+};
 
 export const DEFAULT_SCENARIO: Scenario = {
   name: 'Nouveau scénario',
@@ -22,10 +57,14 @@ export const DEFAULT_SCENARIO: Scenario = {
   peripheriePeakPriceCHFh: 0.0,
   peripherieOffpeakPriceCHFh: 0.0,
   progressiveSlopeFactor: 1.0,
+  dayType: 'weekday',
+  startHour: 7,
+  endHour: 19,
   tpOffpeakDiscountPct: 0,
   enableCovoiturage: false,
   enableTAD: false,
   enableTaxiBons: false,
+  enableFreeBus: false,
   objective: 'reduce-peak-car',
 };
 
@@ -45,6 +84,10 @@ export interface ZoneResult {
     tad: number;
     taxiBons: number;
   };
+  // KPIs stationnement
+  occupancyPct?: number;
+  avgParkingCostCHF?: number;
+  avgWalkMinutes?: number;
 }
 
 export interface PersonaResult {
@@ -70,6 +113,10 @@ export interface SimulationResults {
   equityFlags: string[];
   hypotheses: string[];
   summary: string;
+  // KPIs financiers
+  estimatedRevenueLossCHFyear?: number;
+  estimatedCostPerVisitorCHF?: number;
+  co2SavedTonnesYear?: number;
 }
 
 export interface InsightsResponse {
