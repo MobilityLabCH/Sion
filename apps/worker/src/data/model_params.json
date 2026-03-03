@@ -1,0 +1,53 @@
+{
+  "softmaxTemperature": 1.5,
+  "transferPenaltyCHF": 2.5,
+  "carKmCostCHF": 0.18,
+  "carFrictionMaxCHF": 2.0,
+  "valueOfTimeDefaultCHFh": 22,
+  "shortStayH": 1.0,
+  "longStayH": 3.5,
+  "parkingSearchTimeMin": {
+    "centre": 6,
+    "gare": 4,
+    "est": 3,
+    "ouest": 2,
+    "nord": 2,
+    "sud": 2,
+    "emploi": 1,
+    "peripherie": 1
+  },
+  "prNodes": {
+    "potences": {
+      "label": "P+R Potences",
+      "coords": [
+        7.3318,
+        46.2282
+      ],
+      "capacity": 450,
+      "busTimeToCentreMin": 12,
+      "busLine": "BS 11",
+      "freqPeakMin": 10,
+      "freqOffpeakMin": 20,
+      "ticketCHF": 2.2,
+      "isPRFree": true
+    },
+    "stade": {
+      "label": "P+R Stade",
+      "coords": [
+        7.3888,
+        46.2282
+      ],
+      "capacity": 460,
+      "busTimeToCentreMin": 10,
+      "busLine": "BS 11",
+      "freqPeakMin": 10,
+      "freqOffpeakMin": 20,
+      "ticketCHF": 2.2,
+      "isPRFree": true
+    }
+  },
+  "captivityThresholds": {
+    "competitive": 1.2,
+    "captive": 1.6
+  }
+}
