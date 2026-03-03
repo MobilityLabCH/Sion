@@ -1,12 +1,11 @@
 /**
  * ODPage.tsx — Page dédiée Flux OD
- * 
  * Charge ODSimulator en pleine page (100vh - 48px header).
- * ODSimulator est un composant autonome avec sa propre carte
- * MapLibre, ses données officielles et sa logique de simulation.
- * 
  * Chemin : apps/web/src/pages/ODPage.tsx
  */
+
+// ODSimulator est un .jsx — allowJs:true dans tsconfig.json
+// @ts-ignore — fichier JSX sans déclaration TypeScript
 import ODSimulator from '../components/ODSimulator';
 
 export default function ODPage() {
