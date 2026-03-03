@@ -3,20 +3,19 @@
 
 // ── Helper types ─────────────────────────────────────────────────────────────
 
-/** Plage horaire (utilisée dans Dashboard + ODSimulator) */
 export type DayType = 'weekday' | 'friday' | 'saturday' | 'sunday';
 
 /**
  * Objectif principal du scénario.
- * NB: 'attractivity' et 'revenue' sont utilisés dans Dashboard.tsx (GitHub)
- * en plus des 3 objectifs du ScenarioBuilder.
+ * Étendu pour couvrir toutes les valeurs utilisées dans le projet.
  */
 export type Objective =
   | 'reduce-peak-car'
   | 'protect-short-stay'
   | 'equity-access'
   | 'attractivity'
-  | 'revenue';
+  | 'revenue'
+  | (string & {});   // ← accepte toute chaîne supplémentaire sans casser le typage
 
 // ── Scenario ─────────────────────────────────────────────────────────────────
 
@@ -26,25 +25,25 @@ export interface Scenario {
 
   // Parking centre (Planta/Scex/Cible)
   // Baseline réel Sion = 3.00 CHF/h après 1ère heure gratuite (sion.ch PDFs 2024-2025)
-  centrePeakPriceCHFh:    number;  // 0–10
-  centreOffpeakPriceCHFh: number;  // 0–10
+  centrePeakPriceCHFh:    number;
+  centreOffpeakPriceCHFh: number;
 
   // Parking périphérie / P+R (baseline = 0 CHF, P+R Potences+Stade gratuits)
-  peripheriePeakPriceCHFh:    number;  // 0–5
-  peripherieOffpeakPriceCHFh: number;  // 0–5
+  peripheriePeakPriceCHFh:    number;
+  peripherieOffpeakPriceCHFh: number;
 
-  // Progressivité longue durée (1.0 = actuel, >1.0 = majoration scénario)
-  progressiveSlopeFactor: number;  // 1.0–3.0
+  // Progressivité longue durée (1.0 = actuel)
+  progressiveSlopeFactor: number;
 
   // TP discount hors-pointe
-  tpOffpeakDiscountPct: number;    // 0–50 (%)
+  tpOffpeakDiscountPct: number;
 
   // Mesures complémentaires
   enableCovoiturage: boolean;
   enableTAD:         boolean;
   enableTaxiBons:    boolean;
 
-  // Objectif principal
+  // Objectif principal — string ouvert pour compatibilité ascendante
   objective: Objective;
 }
 
@@ -66,7 +65,7 @@ export const DEFAULT_SCENARIO: Scenario = {
   objective: 'reduce-peak-car',
 };
 
-/** Alias exporté pour compatibilité avec Dashboard.tsx et store.tsx */
+/** Alias pour compatibilité avec Dashboard.tsx et store.tsx */
 export const BASELINE_SCENARIO: Scenario = DEFAULT_SCENARIO;
 
 // ── Résultats simulation ──────────────────────────────────────────────────────
@@ -82,15 +81,15 @@ export interface ModeSplit {
 export interface ZoneResult {
   zoneId:              string;
   label:               string;
-  elasticityScore:     number;         // 0–100
+  elasticityScore:     number;
   category:            'vert' | 'orange' | 'rouge';
-  shiftIndex:          number;         // 0–1
+  shiftIndex:          number;
   estimatedThreshold?: number;
   equityFlag:          boolean;
   equityReason?:       string;
   modeSplit:           ModeSplit;
-  occupancyPct?:       number;         // optionnel — taux d'occupation estimé (ZoneMap)
-  avgParkingCostCHF?:  number;         // optionnel — coût moyen parking simulé (ZoneMap)
+  occupancyPct?:       number;
+  avgParkingCostCHF?:  number;
 }
 
 export interface PersonaResult {
