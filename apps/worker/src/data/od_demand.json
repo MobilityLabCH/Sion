@@ -1,0 +1,130 @@
+{
+  "meta": {
+    "source": "ARE Microrecensement 2015 · isireso-sion.ch · CarPostal 2025 · Estimation MobilityLab",
+    "unit": "voyages/jour ouvrable (estimation)",
+    "captivityThresholds": {
+      "competitive": "ratio TP/voiture < 1.2",
+      "moderate":    "ratio 1.2–1.6",
+      "captive":     "ratio > 1.6 — voiture quasi-obligatoire"
+    }
+  },
+  "origins": [
+    {
+      "id": "bramois", "label": "Bramois", "emoji": "🏘️",
+      "coords": [7.3950, 46.2280], "population": 3500,
+      "carTimeMin": 9, "tpTimeMin": 14,
+      "tpLine": "BS 11", "tpFreqPeakMin": 10, "tpFreqOffpeakMin": 20,
+      "tpTicketCHF": 2.20, "tpZone": 1,
+      "prPotential": false, "prNote": "BS 11 direct — P+R inutile",
+      "demand": { "centre": 850, "gare": 180, "emploi": 320 }
+    },
+    {
+      "id": "chateauneuf", "label": "Châteauneuf-Conthey", "emoji": "🍇",
+      "coords": [7.3200, 46.2300], "population": 8000,
+      "carTimeMin": 12, "tpTimeMin": 10,
+      "tpLine": "RegionAlps / CFF", "tpFreqPeakMin": 30, "tpFreqOffpeakMin": 60,
+      "tpTicketCHF": 3.20, "tpZone": 2,
+      "prPotential": false, "prNote": "Train 8 min — plus rapide que voiture",
+      "demand": { "centre": 1100, "gare": 250, "emploi": 450 }
+    },
+    {
+      "id": "saviese", "label": "Savièse", "emoji": "⛰️",
+      "coords": [7.3100, 46.2600], "population": 6500,
+      "carTimeMin": 14, "tpTimeMin": 32,
+      "tpLine": "CarPostal 341/342", "tpFreqPeakMin": 30, "tpFreqOffpeakMin": 60,
+      "tpTicketCHF": 4.20, "tpZone": 3,
+      "prPotential": true, "prId": "potences", "prNote": "P+R Potences 450 pl. + BS 11 : économise 18 min",
+      "demand": { "centre": 980, "gare": 150, "emploi": 280 }
+    },
+    {
+      "id": "grimisuat", "label": "Grimisuat", "emoji": "🏔️",
+      "coords": [7.3800, 46.2750], "population": 3000,
+      "carTimeMin": 12, "tpTimeMin": 30,
+      "tpLine": "CarPostal 386", "tpFreqPeakMin": 60, "tpFreqOffpeakMin": 120,
+      "tpTicketCHF": 4.20, "tpZone": 3,
+      "prPotential": true, "prId": "stade", "prNote": "P+R Stade 460 pl. + BS 11 — voie principale",
+      "demand": { "centre": 420, "gare": 80, "emploi": 150 }
+    },
+    {
+      "id": "uvrier", "label": "Uvrier / St-Léonard", "emoji": "🏘️",
+      "coords": [7.4250, 46.2300], "population": 4000,
+      "carTimeMin": 13, "tpTimeMin": 11,
+      "tpLine": "CFF", "tpFreqPeakMin": 30, "tpFreqOffpeakMin": 60,
+      "tpTicketCHF": 3.20, "tpZone": 2,
+      "prPotential": false, "prNote": "Train direct 8 min — compétitif",
+      "demand": { "centre": 650, "gare": 200, "emploi": 380 }
+    },
+    {
+      "id": "conthey", "label": "Conthey / Ardon", "emoji": "🌾",
+      "coords": [7.2950, 46.2200], "population": 7000,
+      "carTimeMin": 15, "tpTimeMin": 27,
+      "tpLine": "CarPostal 331", "tpFreqPeakMin": 30, "tpFreqOffpeakMin": 60,
+      "tpTicketCHF": 4.20, "tpZone": 3,
+      "prPotential": true, "prId": "potences", "prNote": "P+R Potences + BS 11 envisageable",
+      "demand": { "centre": 750, "gare": 120, "emploi": 280 }
+    },
+    {
+      "id": "arbaz", "label": "Arbaz / Ayent", "emoji": "🌿",
+      "coords": [7.3600, 46.3000], "population": 4500,
+      "carTimeMin": 20, "tpTimeMin": 43,
+      "tpLine": "CarPostal 342", "tpFreqPeakMin": 60, "tpFreqOffpeakMin": 120,
+      "tpTicketCHF": 4.20, "tpZone": 3,
+      "prPotential": true, "prId": "stade", "prNote": "P+R Stade + BS 11 : économise 23 min",
+      "demand": { "centre": 280, "gare": 40, "emploi": 90 }
+    },
+    {
+      "id": "veysonnaz", "label": "Veysonnaz / Salins", "emoji": "⛷️",
+      "coords": [7.3950, 46.1900], "population": 2000,
+      "carTimeMin": 22, "tpTimeMin": 35,
+      "tpLine": "CarPostal 363", "tpFreqPeakMin": 60, "tpFreqOffpeakMin": 120,
+      "tpTicketCHF": 4.20, "tpZone": 3,
+      "prPotential": true, "prId": "stade", "prNote": "P+R Stade accessible depuis Salins",
+      "demand": { "centre": 150, "gare": 30, "emploi": 60 }
+    },
+    {
+      "id": "nendaz", "label": "Basse-Nendaz / Nendaz", "emoji": "🏔️",
+      "coords": [7.3100, 46.1800], "population": 6000,
+      "carTimeMin": 26, "tpTimeMin": 46,
+      "tpLine": "CarPostal 361/362", "tpFreqPeakMin": 30, "tpFreqOffpeakMin": 60,
+      "tpTicketCHF": 5.20, "tpZone": 4,
+      "prPotential": true, "prId": "potences", "prNote": "P+R Potences + BS 11 : économise 16 min",
+      "demand": { "centre": 380, "gare": 80, "emploi": 140 }
+    },
+    {
+      "id": "sierre", "label": "Sierre / Siders", "emoji": "🍷",
+      "coords": [7.5250, 46.2900], "population": 17000,
+      "carTimeMin": 22, "tpTimeMin": 18,
+      "tpLine": "CFF IC/RE", "tpFreqPeakMin": 15, "tpFreqOffpeakMin": 30,
+      "tpTicketCHF": 5.80, "tpZone": 99,
+      "prPotential": false, "prNote": "Train 15 min — plus rapide que voiture",
+      "demand": { "centre": 320, "gare": 150, "emploi": 80 }
+    },
+    {
+      "id": "martigny", "label": "Martigny", "emoji": "🏛️",
+      "coords": [7.0750, 46.1000], "population": 19000,
+      "carTimeMin": 35, "tpTimeMin": 28,
+      "tpLine": "CFF IC", "tpFreqPeakMin": 30, "tpFreqOffpeakMin": 30,
+      "tpTicketCHF": 8.80, "tpZone": 99,
+      "prPotential": false, "prNote": "Train IC 25 min — très compétitif",
+      "demand": { "centre": 180, "gare": 120, "emploi": 40 }
+    },
+    {
+      "id": "anzere", "label": "Anzère", "emoji": "🎿",
+      "coords": [7.3950, 46.2980], "population": 1200,
+      "carTimeMin": 36, "tpTimeMin": 54,
+      "tpLine": "CarPostal 351", "tpFreqPeakMin": 60, "tpFreqOffpeakMin": 120,
+      "tpTicketCHF": 5.20, "tpZone": 4,
+      "prPotential": true, "prId": "stade", "prNote": "P+R Stade si descente possible",
+      "demand": { "centre": 90, "gare": 20, "emploi": 40 }
+    },
+    {
+      "id": "val-herens", "label": "Val d'Hérens", "emoji": "🦅",
+      "coords": [7.5000, 46.1300], "population": 8000,
+      "carTimeMin": 50, "tpTimeMin": 70,
+      "tpLine": "CarPostal 381", "tpFreqPeakMin": 60, "tpFreqOffpeakMin": 120,
+      "tpTicketCHF": 6.20, "tpZone": 5,
+      "prPotential": true, "prId": "stade", "prNote": "P+R Stade depuis Bramois envisageable",
+      "demand": { "centre": 120, "gare": 20, "emploi": 30 }
+    }
+  ]
+}
