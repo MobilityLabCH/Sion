@@ -1,169 +1,144 @@
-// ─── Types partagés Worker ─────────────────────────────────────────────────
-
-export type DayType = 'weekday' | 'friday' | 'saturday' | 'sunday';
+// ─── Types partagés frontend ─────────────────────────────────────────────────
+// Ce fichier est également importé par le worker (via symlink ou copie).
 
 export interface Scenario {
   id?: string;
   name?: string;
-  createdAt?: string;
 
-  // Parking centre
-  centrePeakPriceCHFh: number;
-  centreOffpeakPriceCHFh: number;
-  // Parking périphérie
-  peripheriePeakPriceCHFh: number;
-  peripherieOffpeakPriceCHFh: number;
+  // ── Parking centre (Planta/Scex/Cible)
+  // Baseline réel Sion = 3.00 CHF/h après 1ère heure gratuite (source: sion.ch PDFs 2024-2025)
+  centrePeakPriceCHFh:    number;  // 0–10
+  centreOffpeakPriceCHFh: number;  // 0–10
 
-  // Progressive pricing
-  progressiveSlopeFactor: number;
+  // ── Parking périphérie / P+R
+  // Baseline réel Sion = 0 CHF (P+R Potences 450 pl. + Stade 460 pl., gratuits)
+  peripheriePeakPriceCHFh:    number;  // 0–5
+  peripherieOffpeakPriceCHFh: number;  // 0–5
 
-  // Fenêtre temporelle
-  dayType?: DayType;
-  startHour?: number;
-  endHour?: number;
+  // ── Tarification progressive longue durée
+  // 1.0 = barème officiel actuel (1h gratuit + CHF 3/h)
+  // > 1.0 = majoration supplémentaire sur les heures au-delà de 1h
+  progressiveSlopeFactor: number;  // 1.0–3.0
 
-  // TP discount hors-pointe
-  tpOffpeakDiscountPct: number;
+  // ── TP discount hors-pointe
+  tpOffpeakDiscountPct: number;    // 0–50 (%)
 
-  // Toggles
+  // ── Mesures complémentaires
   enableCovoiturage: boolean;
-  enableTAD: boolean;
-  enableTaxiBons: boolean;
-  enableFreeBus?: boolean;
+  enableTAD:         boolean;
+  enableTaxiBons:    boolean;
 
-  // Objectif
-  objective: 'reduce-peak-car' | 'protect-short-stay' | 'equity-access' | 'attractivity' | 'revenue';
+  // ── Objectif principal
+  objective: 'reduce-peak-car' | 'protect-short-stay' | 'equity-access';
 }
 
-export interface ParkingRule {
-  dayType: DayType;
-  startHour: number;
-  endHour: number;
-  pricePerHour: number;
-  freeFirstMin?: number | null;
-  maxDurationH?: number | null;
-  note?: string;
-}
+/**
+ * Situation ACTUELLE de Sion (baseline)
+ * Sources: sion.ch/stationnement · PDFs Planta 15.07.2024 + Scex 11.08.2025
+ *   - Centre: 1h gratuite + CHF 3.00/h (h2→h11) + CHF 0.20/h (>h11)
+ *   - P+R Potences/Stade: GRATUIT, connexion BS 11 toutes les 10 min
+ *   - Gratuit vendredi 17h → samedi 24h sur tous les parkings municipaux
+ */
+export const DEFAULT_SCENARIO: Scenario = {
+  name: 'Nouveau scénario',
+  centrePeakPriceCHFh:    3.0,   // CHF 3.00/h après 1h gratuite — Planta/Scex actuel
+  centreOffpeakPriceCHFh: 3.0,   // idem (Sion: pas de tarif creux distinct actuellement)
+  peripheriePeakPriceCHFh:    0.0,
+  peripherieOffpeakPriceCHFh: 0.0,
+  progressiveSlopeFactor: 1.0,
+  tpOffpeakDiscountPct:   0,
+  enableCovoiturage: false,
+  enableTAD:         false,
+  enableTaxiBons:    false,
+  objective: 'reduce-peak-car',
+};
 
-export interface ParkingData {
-  id: string;
-  zoneId: string;
-  name: string;
-  capacity: number;
-  capacityPMR?: number;
-  basePriceCHFh: number;
-  peakMultiplier: number;
-  offpeakMultiplier: number;
-  freeFirstMinutes?: number | null;
-  walkDistanceM: number;
-  frictionIndex: number;
-  source: string;
-  license: string;
-  confidence: number;
-  notes?: string;
-  rules?: ParkingRule[];
-}
+// ─── Résultats simulation ────────────────────────────────────────────────────
 
 export interface ModeSplit {
-  car: number;
-  tp: number;
+  car:         number;
+  tp:          number;
   covoiturage: number;
-  tad: number;
-  taxiBons: number;
+  tad:         number;
+  taxiBons:    number;
 }
 
 export interface ZoneResult {
-  zoneId: string;
-  label: string;
-  elasticityScore: number;
-  category: 'vert' | 'orange' | 'rouge';
-  shiftIndex: number;
-  estimatedThreshold?: number;
-  equityFlag: boolean;
-  equityReason?: string;
-  modeSplit: ModeSplit;
-  occupancyPct?: number;
-  avgParkingCostCHF?: number;
-  avgWalkMinutes?: number;
+  zoneId:             string;
+  label:              string;
+  elasticityScore:    number;        // 0–100
+  category:           'vert' | 'orange' | 'rouge';
+  shiftIndex:         number;        // 0–1 : fraction de bascule voiture → alternatives
+  estimatedThreshold?: number;       // CHF/h estimé de déclenchement bascule
+  equityFlag:         boolean;
+  equityReason?:      string;
+  modeSplit:          ModeSplit;
 }
 
 export interface PersonaResult {
-  personaId: string;
-  label: string;
-  emoji: string;
-  beforeCostCHF: number;
-  afterCostCHF: number;
-  costDeltaCHF: number;
-  preferredMode: string;
+  personaId:          string;
+  label:              string;
+  emoji:              string;
+  beforeCostCHF:      number;
+  afterCostCHF:       number;
+  costDeltaCHF:       number;
+  preferredMode:      string;
   preferredModeBefore: string;
-  equityFlag: boolean;
-  tags: string[];
-  explanation: string[];
+  equityFlag:         boolean;
+  tags:               string[];
+  explanation:        string[];
 }
 
 export interface SimulationResults {
-  scenarioId: string;
-  timestamp: string;
+  scenarioId:       string;
+  timestamp:        string;
   globalShiftIndex: number;
-  zoneResults: ZoneResult[];
-  personaResults: PersonaResult[];
-  equityFlags: string[];
-  hypotheses: string[];
-  summary: string;
-  estimatedRevenueLossCHFyear?: number;
-  estimatedCostPerVisitorCHF?: number;
-  co2SavedTonnesYear?: number;
+  zoneResults:      ZoneResult[];
+  personaResults:   PersonaResult[];
+  equityFlags:      string[];
+  hypotheses:       string[];
+  summary:          string;
 }
 
 export interface InsightsResponse {
   summaryBullets: string[];
-  risks: { risk: string; mitigation: string }[];
-  pilot90Days: { title: string; description: string; metrics: string[] };
-  commDraft: string;
-  improvements?: { title: string; priority: 'M' | 'S' | 'C' | 'W'; effort: 'S' | 'M' | 'L'; value: string }[];
+  risks:          { risk: string; mitigation: string }[];
+  pilot90Days:    { title: string; description: string; metrics: string[] };
+  commDraft:      string;
+  improvements?:  { title: string; priority: 'M' | 'S' | 'C' | 'W'; effort: 'S' | 'M' | 'L'; value: string }[];
 }
 
 export interface ActionsResponse {
-  horizon0_3: ActionItem[];
-  horizon3_12: ActionItem[];
+  horizon0_3:   ActionItem[];
+  horizon3_12:  ActionItem[];
   horizon12_36: ActionItem[];
 }
 
 export interface ActionItem {
-  title: string;
+  title:       string;
   description: string;
-  owner: string;
-  metrics: string[];
-  priority: 'haute' | 'moyenne' | 'basse';
-}
-
-export interface TPData {
-  id: string;
-  zoneId: string;
-  name: string;
-  accessIndex: number;
-  avgFrequencyMin: number;
-  avgFareCHF: number;
-  source?: string;
+  owner:       string;
+  metrics:     string[];
+  priority:    'haute' | 'moyenne' | 'basse';
 }
 
 export interface Persona {
-  id: string;
-  label: string;
-  emoji: string;
-  description: string;
+  id:              string;
+  label:           string;
+  emoji:           string;
+  description:     string;
   valueOfTimeCHFh: number;
-  priceSensitivity: number;
-  scheduleRigidity: number;
-  tpAffinity: number;
-  carDependency: number;
+  priceSensitivity:  number;
+  scheduleRigidity:  number;
+  tpAffinity:        number;
+  carDependency:     number;
   typicalTrip: {
-    fromZoneId: string;
-    toZoneId: string;
-    timeWindow: 'peak' | 'offpeak';
+    fromZoneId:  string;
+    toZoneId:    string;
+    timeWindow:  'peak' | 'offpeak';
     durationType: 'short' | 'long';
   };
-  tags: string[];
-  income: string;
+  tags:       string[];
+  income:     'faible' | 'moyen' | 'élevé';
   alternatives: string[];
 }
