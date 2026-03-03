@@ -1,13 +1,22 @@
 // ─── Types partagés frontend ─────────────────────────────────────────────────
 // apps/web/src/types.ts
 
-// ── Helpers types ────────────────────────────────────────────────────────────
+// ── Helper types ─────────────────────────────────────────────────────────────
 
 /** Plage horaire (utilisée dans Dashboard + ODSimulator) */
 export type DayType = 'weekday' | 'friday' | 'saturday' | 'sunday';
 
-/** Objectif principal du scénario (utilisé dans ScenarioBuilder + Dashboard) */
-export type Objective = 'reduce-peak-car' | 'protect-short-stay' | 'equity-access';
+/**
+ * Objectif principal du scénario.
+ * NB: 'attractivity' et 'revenue' sont utilisés dans Dashboard.tsx (GitHub)
+ * en plus des 3 objectifs du ScenarioBuilder.
+ */
+export type Objective =
+  | 'reduce-peak-car'
+  | 'protect-short-stay'
+  | 'equity-access'
+  | 'attractivity'
+  | 'revenue';
 
 // ── Scenario ─────────────────────────────────────────────────────────────────
 
@@ -16,17 +25,15 @@ export interface Scenario {
   name?: string;
 
   // Parking centre (Planta/Scex/Cible)
-  // Baseline réel Sion = 3.00 CHF/h après 1ère heure gratuite (source: sion.ch PDFs 2024-2025)
+  // Baseline réel Sion = 3.00 CHF/h après 1ère heure gratuite (sion.ch PDFs 2024-2025)
   centrePeakPriceCHFh:    number;  // 0–10
   centreOffpeakPriceCHFh: number;  // 0–10
 
-  // Parking périphérie / P+R
-  // Baseline réel Sion = 0 CHF (P+R Potences 450 pl. + Stade 460 pl., gratuits)
+  // Parking périphérie / P+R (baseline = 0 CHF, P+R Potences+Stade gratuits)
   peripheriePeakPriceCHFh:    number;  // 0–5
   peripherieOffpeakPriceCHFh: number;  // 0–5
 
-  // Tarification progressive longue durée
-  // 1.0 = barème officiel actuel (1h gratuit + CHF 3/h)
+  // Progressivité longue durée (1.0 = actuel, >1.0 = majoration scénario)
   progressiveSlopeFactor: number;  // 1.0–3.0
 
   // TP discount hors-pointe
@@ -42,13 +49,13 @@ export interface Scenario {
 }
 
 /**
- * Situation ACTUELLE de Sion (nouveau scénario = baseline)
+ * Situation ACTUELLE de Sion (= baseline)
  * Sources: sion.ch/stationnement · PDFs Planta 15.07.2024 + Scex 11.08.2025
  */
 export const DEFAULT_SCENARIO: Scenario = {
   name: 'Nouveau scénario',
-  centrePeakPriceCHFh:    3.0,   // CHF 3.00/h après 1h gratuite — Planta/Scex actuel
-  centreOffpeakPriceCHFh: 3.0,   // idem (Sion: pas de tarif creux distinct actuellement)
+  centrePeakPriceCHFh:    3.0,
+  centreOffpeakPriceCHFh: 3.0,
   peripheriePeakPriceCHFh:    0.0,
   peripherieOffpeakPriceCHFh: 0.0,
   progressiveSlopeFactor: 1.0,
@@ -59,10 +66,7 @@ export const DEFAULT_SCENARIO: Scenario = {
   objective: 'reduce-peak-car',
 };
 
-/**
- * BASELINE_SCENARIO = situation actuelle de Sion (identique à DEFAULT_SCENARIO)
- * Alias exporté pour compatibilité avec Dashboard.tsx et store.tsx
- */
+/** Alias exporté pour compatibilité avec Dashboard.tsx et store.tsx */
 export const BASELINE_SCENARIO: Scenario = DEFAULT_SCENARIO;
 
 // ── Résultats simulation ──────────────────────────────────────────────────────
@@ -76,18 +80,17 @@ export interface ModeSplit {
 }
 
 export interface ZoneResult {
-  zoneId:             string;
-  label:              string;
-  elasticityScore:    number;         // 0–100
-  category:           'vert' | 'orange' | 'rouge';
-  shiftIndex:         number;         // 0–1 : fraction voiture → alternatives
-  estimatedThreshold?: number;        // CHF/h estimé de déclenchement bascule
-  equityFlag:         boolean;
-  equityReason?:      string;
-  modeSplit:          ModeSplit;
-  // Champs optionnels enrichis (calculés dans certaines vues)
-  occupancyPct?:      number;         // Taux d'occupation estimé (0–1)
-  avgParkingCostCHF?: number;         // Coût moyen parking simulé pour cette zone
+  zoneId:              string;
+  label:               string;
+  elasticityScore:     number;         // 0–100
+  category:            'vert' | 'orange' | 'rouge';
+  shiftIndex:          number;         // 0–1
+  estimatedThreshold?: number;
+  equityFlag:          boolean;
+  equityReason?:       string;
+  modeSplit:           ModeSplit;
+  occupancyPct?:       number;         // optionnel — taux d'occupation estimé (ZoneMap)
+  avgParkingCostCHF?:  number;         // optionnel — coût moyen parking simulé (ZoneMap)
 }
 
 export interface PersonaResult {
@@ -139,7 +142,7 @@ export interface ActionItem {
   priority:    'haute' | 'moyenne' | 'basse';
 }
 
-// ── Persona (frontend) ───────────────────────────────────────────────────────
+// ── Persona ──────────────────────────────────────────────────────────────────
 
 export interface Persona {
   id:              string;
