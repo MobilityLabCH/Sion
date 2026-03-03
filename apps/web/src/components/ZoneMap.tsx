@@ -15,7 +15,6 @@ const CATEGORY_COLORS: Record<string, string> = {
   default: '#94a3b8',
 };
 
-// ✅ FIX: URL absolue vers le Worker (plus de /api/data relatif qui cassait)
 const API_BASE =
   (import.meta as any).env?.VITE_API_URL ||
   'https://sion.ericimstepf.workers.dev/api';
@@ -57,20 +56,17 @@ export default function ZoneMap({ zoneResults, height = '420px', className = '' 
     };
   }, []);
 
-  // Update zone layers when results change
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
     const updateLayers = () => {
-      // ✅ FIX: fetch vers le Worker Cloudflare, pas une URL relative
-      fetch(`${API_BASE}/data`)
+      fetch(`${API_BASE}/data`)                          // ← FIXÉ: URL absolue
         .then(r => r.json())
         .then((data: any) => {
           const geojson = data.zones;
           if (!geojson) return;
 
-          // Add result data to features
           const enriched = {
             ...geojson,
             features: geojson.features.map((f: any) => {
@@ -89,7 +85,6 @@ export default function ZoneMap({ zoneResults, height = '420px', className = '' 
             }),
           };
 
-          // Remove existing layers/sources
           if (map.getLayer('zones-fill')) map.removeLayer('zones-fill');
           if (map.getLayer('zones-outline')) map.removeLayer('zones-outline');
           if (map.getLayer('zones-labels')) map.removeLayer('zones-labels');
@@ -130,7 +125,6 @@ export default function ZoneMap({ zoneResults, height = '420px', className = '' 
             },
           });
 
-          // Labels
           map.addLayer({
             id: 'zones-labels',
             type: 'symbol',
@@ -148,7 +142,6 @@ export default function ZoneMap({ zoneResults, height = '420px', className = '' 
             },
           });
 
-          // Popups on click
           map.on('click', 'zones-fill', (e) => {
             if (!e.features?.[0]) return;
             const props = e.features[0].properties;
@@ -157,32 +150,28 @@ export default function ZoneMap({ zoneResults, height = '420px', className = '' 
             new maplibregl.Popup({ closeButton: true, maxWidth: '260px' })
               .setLngLat(e.lngLat)
               .setHTML(`
-                <div style="font-family: 'DM Sans', sans-serif; padding: 4px;">
-                  <div style="font-weight: 600; font-size: 14px; margin-bottom: 6px;">${props.label}</div>
+                <div style="font-family:sans-serif;padding:4px">
+                  <div style="font-weight:600;font-size:14px;margin-bottom:6px">${props.label}</div>
                   ${result ? `
-                    <div style="display:flex; gap: 8px; flex-wrap: wrap; margin-bottom: 6px;">
-                      <span style="background: ${CATEGORY_COLORS[result.category]}20; color: ${CATEGORY_COLORS[result.category]}; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 12px; border: 1px solid ${CATEGORY_COLORS[result.category]}40;">
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+                      <span style="background:${CATEGORY_COLORS[result.category]}20;color:${CATEGORY_COLORS[result.category]};font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;border:1px solid ${CATEGORY_COLORS[result.category]}40">
                         ${result.category.toUpperCase()}
                       </span>
                     </div>
-                    <div style="font-size: 12px; color: #374151;">
+                    <div style="font-size:12px;color:#374151">
                       <div>Élasticité: <strong>${result.elasticityScore}/100</strong></div>
                       <div>Shift modal: <strong>${(result.shiftIndex * 100).toFixed(0)}%</strong></div>
                       ${result.estimatedThreshold ? `<div>Seuil bascule: <strong>~${result.estimatedThreshold.toFixed(1)} CHF/h</strong></div>` : ''}
-                      ${result.equityFlag ? `<div style="color:#ef4444; margin-top:4px;">⚠ Risque équité détecté</div>` : ''}
+                      ${result.equityFlag ? `<div style="color:#ef4444;margin-top:4px">⚠ Risque équité détecté</div>` : ''}
                     </div>
-                  ` : `<div style="font-size: 12px; color: #6b7280;">${props.description}</div>`}
+                  ` : `<div style="font-size:12px;color:#6b7280">${props.description || ''}</div>`}
                 </div>
               `)
               .addTo(map);
           });
 
-          map.on('mouseenter', 'zones-fill', () => {
-            map.getCanvas().style.cursor = 'pointer';
-          });
-          map.on('mouseleave', 'zones-fill', () => {
-            map.getCanvas().style.cursor = '';
-          });
+          map.on('mouseenter', 'zones-fill', () => { map.getCanvas().style.cursor = 'pointer'; });
+          map.on('mouseleave', 'zones-fill', () => { map.getCanvas().style.cursor = ''; });
         })
         .catch(console.error);
     };
