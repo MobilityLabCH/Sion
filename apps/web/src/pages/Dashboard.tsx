@@ -1,561 +1,453 @@
 /**
- * Dashboard.tsx — Layout 3 colonnes
- * Gauche : paramètres scénario (simplifié — sans mesures alternatives)
- * Centre : carte OD + zones + parkings
- * Droite : KPIs + sources
+ * Dashboard.tsx — Outil de décision Parking · Ville de Sion
+ * Design: décideur municipal, levier unique = tarification parking
+ *
+ * Chemin : apps/web/src/pages/Dashboard.tsx
  */
-import { useEffect, useCallback, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+
+import { useCallback } from 'react';
 import { useApp } from '../hooks/store';
 import ZoneMap from '../components/ZoneMap';
-import KPICard from '../components/KPICard';
-import CategoryPill from '../components/CategoryPill';
-import SliderField from '../components/SliderField';
-import type { Scenario, DayType, Objective } from '../types';
-import ODPanel from '../components/ODPanel';
+import type { Scenario } from '../types';
 import { BASELINE_SCENARIO } from '../types';
 
-// ─── Constantes ─────────────────────────────────────────────────────────────
+// ─── Parkings réels de Sion (sion.ch) ────────────────────────────────────────
 
-const SEV = {
-  fluide:  { dot: 'bg-green-500',  text: 'text-green-700',  bg: 'bg-green-50 border-green-200',  label: 'Fluide'  },
-  modéré:  { dot: 'bg-amber-500',  text: 'text-amber-700',  bg: 'bg-amber-50 border-amber-200',  label: 'Modéré'  },
-  dense:   { dot: 'bg-orange-500', text: 'text-orange-700', bg: 'bg-orange-50 border-orange-200', label: 'Dense'  },
-  bloqué:  { dot: 'bg-red-500',    text: 'text-red-700',    bg: 'bg-red-50 border-red-200',       label: 'Bloqué' },
-} as const;
-
-const DAY_OPTS: { value: DayType; label: string; sub?: string }[] = [
-  { value: 'weekday',  label: 'Lun–Jeu' },
-  { value: 'friday',   label: 'Vendredi', sub: '⚡ gratuit dès 17h' },
-  { value: 'saturday', label: 'Samedi',   sub: '⚡ gratuit (actuel)' },
-  { value: 'sunday',   label: 'Dimanche' },
+const PARKINGS = [
+  {
+    group: 'Centre-ville',
+    color: '#ef4444',
+    field: 'centrePeakPriceCHFh' as keyof Scenario,
+    items: [
+      { name: 'Parking Planta',    places: 562,  icon: '🅿️' },
+      { name: 'Parking Scex',      places: 658,  icon: '🅿️' },
+      { name: 'Parking de la Cible', places: 204, icon: '🅿️' },
+    ],
+    totalPlaces: 1424,
+    baselineCHFh: 3.0,
+    note: '1ère heure gratuite · gratuit ven.17h → sam.24h',
+    maxCHFh: 8,
+    lever: true,
+  },
+  {
+    group: 'Gare CFF',
+    color: '#f97316',
+    field: null, // mapped to centreOffpeakPriceCHFh as proxy
+    items: [
+      { name: 'Parking Gare CFF', places: 300, icon: '🚉' },
+    ],
+    totalPlaces: 300,
+    baselineCHFh: 2.0,
+    note: 'Tarif estimé · ~CHF 2/h',
+    maxCHFh: 6,
+    lever: false,
+  },
+  {
+    group: 'Périphérie payante',
+    color: '#3b82f6',
+    field: null,
+    items: [
+      { name: 'Parking Nord',         places: 282, icon: '🅿️' },
+      { name: 'Parking Roches-Brunes', places: 300, icon: '🅿️' },
+      { name: 'Parking St-Guérin',    places: 66,  icon: '🅿️' },
+    ],
+    totalPlaces: 648,
+    baselineCHFh: 1.5,
+    note: 'Tarif préférentiel estimé · ~CHF 1.50/h',
+    maxCHFh: 4,
+    lever: false,
+  },
+  {
+    group: 'P+R Gratuits',
+    color: '#22c55e',
+    field: 'peripheriePeakPriceCHFh' as keyof Scenario,
+    items: [
+      { name: 'P+R Potences (Sion-Ouest)', places: 450, icon: '🚌' },
+      { name: 'P+R Stade / Échutes',       places: 460, icon: '🚌' },
+    ],
+    totalPlaces: 910,
+    baselineCHFh: 0,
+    note: 'BS 11 → centre toutes les 10 min · connexion directe',
+    maxCHFh: 0,
+    lever: false,
+  },
+  {
+    group: 'Zone Industrielle',
+    color: '#ec4899',
+    field: null,
+    items: [
+      { name: 'Parkings privés entreprises', places: 1200, icon: '🏭' },
+    ],
+    totalPlaces: 1200,
+    baselineCHFh: 0,
+    note: 'Gratuit employés · levier nécessite mesure employeur',
+    maxCHFh: 0,
+    lever: false,
+  },
 ];
 
-const OBJ_OPTS: { value: Objective; label: string; icon: string }[] = [
-  { value: 'attractivity',       label: 'Attractivité centre',     icon: '🏙' },
-  { value: 'reduce-peak-car',    label: 'Réduire voiture pointe',  icon: '🚗' },
-  { value: 'protect-short-stay', label: 'Protéger commerces',      icon: '🛍' },
-  { value: 'equity-access',      label: 'Équité & accessibilité',  icon: '⚖️' },
-  { value: 'revenue',            label: 'Recettes parking',        icon: '💰' },
-];
+// ─── Barème couleur par prix ───────────────────────────────────────────────
 
-// Scénarios types — tous basés sur des mesures réelles sion.ch
-const PRESETS = [
-  {
-    icon: '📍', label: 'Situation actuelle',
-    sub: 'Gratuit ven.17h + sam.',
-    s: BASELINE_SCENARIO,
-  },
-  {
-    icon: '💶', label: 'Sans gratuité',
-    sub: 'Tarif normal 7j/7',
-    s: { ...BASELINE_SCENARIO, enableFreeBus: false, dayType: 'weekday' as DayType,
-         centrePeakPriceCHFh: 3.0, centreOffpeakPriceCHFh: 1.5,
-         name: 'Sans aucune gratuité — référence' },
-  },
-  {
-    icon: '🚌', label: 'Bus gratuits seuls',
-    sub: 'Parking payant + bus offert',
-    s: { ...BASELINE_SCENARIO, enableFreeBus: true, centrePeakPriceCHFh: 3.0,
-         centreOffpeakPriceCHFh: 1.5, name: 'Bus gratuits · parking payant' },
-  },
-  {
-    icon: '⚡', label: 'Tarification dynamique',
-    sub: 'Heure creuse −50%',
-    s: { ...BASELINE_SCENARIO, enableFreeBus: false, dayType: 'weekday' as DayType,
-         centrePeakPriceCHFh: 4.5, centreOffpeakPriceCHFh: 1.0,
-         progressiveSlopeFactor: 1.5, name: 'Tarification dynamique' },
-  },
-];
-
-// ─── Composant Δ-badge ────────────────────────────────────────────────────────
-function Delta({ val, unit = '%', invertColor = false }: { val: number; unit?: string; invertColor?: boolean }) {
-  const pos = invertColor ? val < 0 : val > 0;
-  const neutral = Math.abs(val) < 0.5;
-  const cls = neutral ? 'text-ink-400' : pos ? 'text-green-600' : 'text-red-600';
-  return <span className={`font-mono text-xs font-semibold ${cls}`}>{val > 0 ? '+' : ''}{val.toFixed(1)}{unit}</span>;
+function priceColor(chf: number): string {
+  if (chf === 0)  return '#22c55e';
+  if (chf <= 1.5) return '#f59e0b';
+  if (chf <= 3)   return '#f97316';
+  return '#ef4444';
 }
 
-// ─── Sources de données ───────────────────────────────────────────────────────
-function DataSourcesPanel() {
+// ─── Composant slider parking ─────────────────────────────────────────────
+
+function ParkingSlider({
+  value, onChange, max, baseline, color,
+}: { value: number; onChange: (v: number) => void; max: number; baseline: number; color: string }) {
+  const steps = [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5, 6, 6.5, 7, 7.5, 8];
+  const validSteps = steps.filter(s => s <= max);
+
   return (
-    <div className="rounded-xl border border-ink-100 overflow-hidden">
-      <div className="bg-ink-50 px-3 py-2 flex items-center gap-2">
-        <span className="text-xs font-semibold text-ink-500 uppercase tracking-wide">Sources de données</span>
-      </div>
-      <div className="divide-y divide-ink-50 text-xs">
-        {[
-          {
-            icon: '🅿️', label: 'Parkings Planta + Scex',
-            src: 'sion.ch/stationnement',
-            date: '2025', lic: 'OGD-CH',
-            conf: 95, confLabel: '✓ RÉEL',
-            confColor: 'text-green-700 bg-green-50',
-            note: 'Capacités, tarifs, règles gratuité officielles'
-          },
-          {
-            icon: '🗺', label: 'Zones géographiques',
-            src: 'OpenStreetMap · MobilityLab',
-            date: '2025', lic: 'ODbL',
-            conf: 80, confLabel: '✓ RÉEL',
-            confColor: 'text-green-700 bg-green-50',
-            note: 'Périmètres approximatifs — à affiner avec SIG Sion'
-          },
-          {
-            icon: '↗', label: 'Flux OD (origine→dest.)',
-            src: 'ARE Microrecensement mobilité 2015',
-            date: '2015', lic: 'OGD-CH',
-            conf: 60, confLabel: '⚠ ESTIMÉ',
-            confColor: 'text-amber-700 bg-amber-50',
-            note: 'Volumes relatifs · données 2015 · calibration locale requise'
-          },
-          {
-            icon: '🚌', label: 'Bus urbains Sion',
-            src: 'CarPostal · lignes 1–9',
-            date: '2025', lic: 'GTFS-CH',
-            conf: 85, confLabel: '✓ RÉEL',
-            confColor: 'text-green-700 bg-green-50',
-            note: 'Fréquences, tarifs, arrêts géolocalisés'
-          },
-          {
-            icon: '🚗', label: 'Trafic live',
-            src: 'TomTom Traffic Flow v4',
-            date: 'Temps réel', lic: 'Commercial',
-            conf: 90, confLabel: '✓ LIVE',
-            confColor: 'text-blue-700 bg-blue-50',
-            note: 'Vitesse + congestion Grand-Pont (proxy Worker)'
-          },
-          {
-            icon: '🧮', label: 'Modèle comportemental',
-            src: 'Logit multinomial (RUM) · ETH IVT',
-            date: '2025', lic: 'Open source',
-            conf: 45, confLabel: '⚠ ESTIMÉ',
-            confColor: 'text-amber-700 bg-amber-50',
-            note: 'θ=0.6 · VOT ARE 2020 · calibration données réelles requise'
-          },
-        ].map(d => (
-          <div key={d.label} className="px-3 py-2">
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex items-center gap-1.5">
-                <span>{d.icon}</span>
-                <span className="font-medium text-ink">{d.label}</span>
-              </div>
-              <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${d.confColor}`}>
-                {d.confLabel}
-              </span>
-            </div>
-            <div className="mt-0.5 text-ink-400 text-[10px] pl-5">
-              {d.src} · {d.date} · {d.lic}
-            </div>
-            <div className="mt-0.5 text-ink-500 text-[10px] pl-5 italic">{d.note}</div>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <input
+        type="range" min={0} max={max} step={0.5} value={value}
+        onChange={e => onChange(parseFloat(e.target.value))}
+        style={{ flex: 1, accentColor: color, height: 4 }}
+      />
+      <div style={{ width: 72, textAlign: 'right' }}>
+        <span style={{
+          fontSize: 16, fontWeight: 900,
+          color: value === baseline ? '#6b7280' : value > baseline ? '#ef4444' : '#22c55e',
+        }}>
+          {value === 0 ? 'Gratuit' : `CHF ${value.toFixed(1)}/h`}
+        </span>
+        {value !== baseline && (
+          <div style={{ fontSize: 9, color: '#9ca3af', marginTop: 1 }}>
+            base: CHF {baseline.toFixed(1)}/h
           </div>
-        ))}
+        )}
       </div>
     </div>
   );
 }
 
-// ─── Dashboard ────────────────────────────────────────────────────────────────
+// ─── KPI Card ─────────────────────────────────────────────────────────────────
+
+function KPI({ icon, label, value, sub, color = '#374151', bg = '#f8fafc' }: {
+  icon: string; label: string; value: string; sub?: string; color?: string; bg?: string;
+}) {
+  return (
+    <div style={{ background: bg, borderRadius: 12, padding: '12px 16px', flex: 1 }}>
+      <div style={{ fontSize: 11, color: '#9ca3af', fontWeight: 600, marginBottom: 4 }}>{icon} {label}</div>
+      <div style={{ fontSize: 22, fontWeight: 900, color, lineHeight: 1 }}>{value}</div>
+      {sub && <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 3 }}>{sub}</div>}
+    </div>
+  );
+}
+
+// ─── Composant principal ──────────────────────────────────────────────────────
+
 export default function Dashboard() {
   const {
-    scenario, updateScenario, setScenario,
+    scenario, updateScenario,
     results, baselineResults,
-    isSimulating, runSimulation, runBaselineSimulation,
-    trafficData, isLoadingTraffic, fetchTraffic,
-    compareMode, setCompareMode,
-    simulationSource, apiOnline,
-  } = useApp() as any;
-  const navigate = useNavigate();
-  const [rightTab, setRightTab] = useState<'kpi' | 'od' | 'sources'>('kpi');
+    isSimulating, runSimulation,
+    trafficData,
+  } = useApp();
 
-  // Init: fetch trafic + baseline
-  useEffect(() => {
-    fetchTraffic();
-    const iv = setInterval(fetchTraffic, 120_000);
-    return () => clearInterval(iv);
-  }, []);
-  useEffect(() => {
-    if (!baselineResults) runBaselineSimulation?.();
-  }, []);
+  const centreCHFh = scenario.centrePeakPriceCHFh ?? 3.0;
+  const prCHFh     = scenario.peripheriePeakPriceCHFh ?? 0.0;
 
-  const handleSimulate = useCallback(async () => {
-    await runSimulation();
-  }, [runSimulation]);
+  const baseline = BASELINE_SCENARIO;
 
-  const sev = trafficData?.connected ? (trafficData.severity ?? 'fluide') as keyof typeof SEV : null;
-  const sevCfg = sev ? SEV[sev] : null;
+  // Calcul delta modal (diff vs baseline)
+  const baselineCar  = baselineResults?.modeSplit?.car  ?? 62;
+  const scenarioCar  = results?.modeSplit?.car  ?? baselineCar;
+  const deltaModal   = scenarioCar - baselineCar;
 
-  const shift = results ? results.globalShiftIndex * 100 : null;
-  const bShift = baselineResults ? baselineResults.globalShiftIndex * 100 : null;
-  const shiftDelta = shift !== null && bShift !== null ? shift - bShift : null;
+  // Recettes estimées (simplifiées)
+  const baselineRev  = baselineResults?.parkingRevenueCHFday  ?? 0;
+  const scenarioRev  = results?.parkingRevenueCHFday  ?? 0;
+  const deltaRev     = scenarioRev - baselineRev;
+
+  const hasResults = results !== null;
+  const changed = centreCHFh !== baseline.centrePeakPriceCHFh ||
+                  prCHFh     !== baseline.peripheriePeakPriceCHFh;
+
+  // Trafic en-tête
+  const sev = trafficData?.severity ?? 'fluide';
+  const speed = trafficData?.currentSpeed ?? 17;
+  const sevColor = sev === 'fluide' ? '#16a34a' : sev === 'modéré' ? '#d97706' : sev === 'dense' ? '#ea580c' : '#dc2626';
 
   return (
-    <div className="flex flex-col" style={{ height: 'calc(100vh - 48px)' }}>
+    <div style={{ display: 'flex', height: '100%', fontFamily: "'DM Sans','Inter',sans-serif", background: '#f8fafc' }}>
 
-      {/* ── Barre statut ──────────────────────────────────────────────── */}
-      <div className="bg-white border-b border-ink-50 px-4 py-1.5 flex items-center gap-3 text-xs flex-shrink-0 flex-wrap">
-        <span className="font-semibold text-ink">Outil d'aide à la décision · Mobilité Sion</span>
-        <span className="text-ink-200">|</span>
-        {isLoadingTraffic ? (
-          <span className="text-ink-400 flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-ink-300 animate-pulse"/>Trafic…</span>
-        ) : trafficData?.connected && sevCfg ? (
-          <span className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full border font-medium ${sevCfg.bg}`}>
-            <span className={`w-1.5 h-1.5 rounded-full ${sevCfg.dot} animate-pulse`}/>
-            <span className={sevCfg.text}>Trafic Sion · {sevCfg.label} · {trafficData.currentSpeed} km/h</span>
-          </span>
-        ) : (
-          <button onClick={fetchTraffic} className="text-ink-400 hover:text-ink underline">Trafic TomTom · Réessayer</button>
-        )}
-        <span className="ml-auto flex items-center gap-2">
-          <span className="px-1.5 py-0.5 rounded bg-green-50 border border-green-200 text-green-700 font-mono">✓ RÉEL</span>
-          <span className="text-ink-400">parkings officiels 2025</span>
-          <span className="px-1.5 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-700 font-mono">⚠ ESTIMÉ</span>
-          <span className="text-ink-400">comportements (modèle)</span>
-          {simulationSource === 'local' && (
-            <span className="px-1.5 py-0.5 rounded bg-purple-50 border border-purple-200 text-purple-700 font-mono" title="Worker inaccessible — simulation dans le navigateur">⚡ LOCAL</span>
+      {/* ── PANNEAU GAUCHE : Parkings ─────────────────────────────────────── */}
+      <div style={{ width: 300, background: 'white', borderRight: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+
+        {/* En-tête trafic */}
+        <div style={{ padding: '12px 16px', borderBottom: '1px solid #f1f5f9', background: '#fafafa', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ width: 8, height: 8, borderRadius: '50%', background: sevColor, flexShrink: 0 }} />
+          <span style={{ fontSize: 12, fontWeight: 600, color: sevColor }}>Trafic Sion · {sev} · {speed} km/h</span>
+        </div>
+
+        {/* Titre */}
+        <div style={{ padding: '14px 16px 8px' }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: '#111827', marginBottom: 2 }}>
+            Tarification des parkings
+          </div>
+          <div style={{ fontSize: 11, color: '#9ca3af', lineHeight: 1.5 }}>
+            Ajustez le prix des parkings publics.<br/>
+            Les P+R et parkings privés ne sont pas des leviers directs.
+          </div>
+        </div>
+
+        {/* Liste parkings scrollable */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '0 16px 16px' }}>
+          {PARKINGS.map(pg => (
+            <div key={pg.group} style={{ marginBottom: 14 }}>
+              {/* Groupe header */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <div style={{ width: 10, height: 10, borderRadius: 3, background: pg.color, flexShrink: 0 }} />
+                <div style={{ fontSize: 11, fontWeight: 800, color: '#374151', textTransform: 'uppercase' as const, letterSpacing: '0.04em' }}>
+                  {pg.group}
+                </div>
+                <div style={{ fontSize: 10, color: '#9ca3af', marginLeft: 'auto' }}>
+                  {pg.totalPlaces.toLocaleString('fr-CH')} pl.
+                </div>
+              </div>
+
+              {/* Parkings individuels */}
+              {pg.items.map(item => (
+                <div key={item.name} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, paddingLeft: 18 }}>
+                  <span style={{ fontSize: 12 }}>{item.icon}</span>
+                  <div style={{ fontSize: 11, color: '#374151', flex: 1 }}>{item.name}</div>
+                  <div style={{ fontSize: 10, color: '#9ca3af' }}>{item.places} pl.</div>
+                </div>
+              ))}
+
+              {/* Slider si levier disponible */}
+              {pg.lever && pg.field ? (
+                <div style={{ paddingLeft: 18, marginTop: 8 }}>
+                  <ParkingSlider
+                    value={scenario[pg.field] as number ?? pg.baselineCHFh}
+                    onChange={v => updateScenario({ [pg.field as string]: v, [`${pg.field as string}`.replace('Peak','Offpeak')]: v })}
+                    max={pg.maxCHFh}
+                    baseline={pg.baselineCHFh}
+                    color={pg.color}
+                  />
+                </div>
+              ) : (
+                <div style={{ paddingLeft: 18, marginTop: 6 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ flex: 1, height: 4, background: '#f1f5f9', borderRadius: 2 }}>
+                      <div style={{ width: pg.baselineCHFh === 0 ? '0%' : `${(pg.baselineCHFh / 8) * 100}%`, height: '100%', background: pg.color, borderRadius: 2, opacity: 0.4 }} />
+                    </div>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: '#9ca3af', width: 72, textAlign: 'right' }}>
+                      {pg.baselineCHFh === 0 ? 'Gratuit' : `~CHF ${pg.baselineCHFh}/h`}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 9, color: '#c4b5fd', marginTop: 3 }}>⚠ Pas de levier direct</div>
+                </div>
+              )}
+
+              <div style={{ fontSize: 9, color: '#d1d5db', paddingLeft: 18, marginTop: 4 }}>{pg.note}</div>
+            </div>
+          ))}
+
+          {/* Résumé changements */}
+          {changed && (
+            <div style={{ background: '#fffbeb', border: '1.5px solid #fde68a', borderRadius: 10, padding: '10px 12px', marginTop: 8 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#92400e', marginBottom: 6 }}>Modifications en cours</div>
+              {centreCHFh !== baseline.centrePeakPriceCHFh && (
+                <div style={{ fontSize: 11, color: '#92400e', marginBottom: 3 }}>
+                  Centre-ville : {baseline.centrePeakPriceCHFh} → <strong>{centreCHFh === 0 ? 'Gratuit' : `CHF ${centreCHFh}/h`}</strong>
+                </div>
+              )}
+              {prCHFh !== baseline.peripheriePeakPriceCHFh && (
+                <div style={{ fontSize: 11, color: '#92400e' }}>
+                  P+R : {baseline.peripheriePeakPriceCHFh} → <strong>{prCHFh === 0 ? 'Gratuit' : `CHF ${prCHFh}/h`}</strong>
+                </div>
+              )}
+            </div>
           )}
-        </span>
+        </div>
+
+        {/* Bouton simuler */}
+        <div style={{ padding: '12px 16px', borderTop: '1px solid #f1f5f9' }}>
+          <button
+            onClick={runSimulation}
+            disabled={isSimulating}
+            style={{
+              width: '100%', padding: '12px 0', borderRadius: 10, border: 'none',
+              background: isSimulating ? '#e5e7eb' : changed ? '#2563eb' : '#6b7280',
+              color: 'white', fontSize: 14, fontWeight: 800, cursor: isSimulating ? 'not-allowed' : 'pointer',
+              transition: 'background 0.2s',
+            }}
+          >
+            {isSimulating ? '⏳ Simulation…' : changed ? '▶ Simuler' : '▶ Simuler (baseline)'}
+          </button>
+          {!changed && (
+            <div style={{ fontSize: 10, color: '#9ca3af', textAlign: 'center', marginTop: 6 }}>
+              Ajustez un tarif pour simuler un scénario
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* ── Layout 3 colonnes ─────────────────────────────────────────── */}
-      <div className="flex flex-1 overflow-hidden">
+      {/* ── CENTRE : Carte ────────────────────────────────────────────────── */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
 
-        {/* ── Colonne gauche : Paramètres ───────────────────────────── */}
-        <div className="w-64 flex-shrink-0 bg-white border-r border-ink-100 overflow-y-auto flex flex-col text-xs">
-
-          {/* Presets */}
-          <div className="p-3 border-b border-ink-50">
-            <div className="label-sm mb-2">Scénarios</div>
-            <div className="grid grid-cols-2 gap-1.5">
-              {PRESETS.map(p => (
-                <button key={p.label}
-                  onClick={() => setScenario({ ...p.s })}
-                  className={`text-left p-2 rounded-lg border transition-all ${
-                    scenario.name === p.s.name
-                      ? 'border-red-300 bg-red-50 text-red-700'
-                      : 'border-ink-200 hover:border-red-200 hover:bg-red-50 text-ink'
-                  }`}
-                >
-                  <div className="text-lg mb-0.5">{p.icon}</div>
-                  <div className="font-semibold leading-tight text-[11px]">{p.label}</div>
-                  <div className="text-ink-400 mt-0.5 text-[10px]">{p.sub}</div>
-                </button>
-              ))}
-            </div>
+        {/* Barre titre */}
+        <div style={{ padding: '10px 16px', borderBottom: '1px solid #e5e7eb', background: 'white', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#374151' }}>
+            Carte des zones et parkings · Sion
           </div>
-
-          {/* Jour & heure */}
-          <div className="p-3 border-b border-ink-50">
-            <div className="label-sm mb-2">Jour & fenêtre horaire</div>
-            <div className="grid grid-cols-2 gap-1 mb-3">
-              {DAY_OPTS.map(d => (
-                <button key={d.value}
-                  onClick={() => updateScenario({ dayType: d.value })}
-                  className={`p-1.5 rounded-lg border text-center transition-all ${
-                    scenario.dayType === d.value
-                      ? 'border-red-300 bg-red-50 text-red-700 font-semibold'
-                      : 'border-ink-200 text-ink hover:border-red-200'
-                  }`}
-                >
-                  <div>{d.label}</div>
-                  {d.sub && <div className="text-[9px] text-amber-600">{d.sub}</div>}
-                </button>
-              ))}
-            </div>
-            <div className="space-y-1 text-ink-500">
-              <div className="flex items-center justify-between">
-                <span>Début</span>
-                <div className="flex items-center gap-1">
-                  <input type="range" min={0} max={23} value={scenario.startHour}
-                    onChange={e => updateScenario({ startHour: +e.target.value })}
-                    className="w-20 slider-track"/>
-                  <span className="font-mono w-7 text-right">{scenario.startHour}h</span>
-                </div>
+          <div style={{ display: 'flex', gap: 6, marginLeft: 'auto' }}>
+            {[
+              { label: 'Centre', color: '#ef4444' },
+              { label: 'Gare', color: '#f97316' },
+              { label: 'Zone Industrielle', color: '#ec4899' },
+              { label: 'P+R', color: '#22c55e' },
+            ].map(z => (
+              <div key={z.label} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: '#6b7280' }}>
+                <div style={{ width: 8, height: 8, borderRadius: 2, background: z.color }} />
+                {z.label}
               </div>
-              <div className="flex items-center justify-between">
-                <span>Fin</span>
-                <div className="flex items-center gap-1">
-                  <input type="range" min={1} max={24} value={scenario.endHour}
-                    onChange={e => updateScenario({ endHour: +e.target.value })}
-                    className="w-20 slider-track"/>
-                  <span className="font-mono w-7 text-right">{scenario.endHour}h</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Objectif */}
-          <div className="p-3 border-b border-ink-50">
-            <div className="label-sm mb-2">Objectif politique</div>
-            <div className="space-y-1">
-              {OBJ_OPTS.map(o => (
-                <button key={o.value}
-                  onClick={() => updateScenario({ objective: o.value as Objective })}
-                  className={`w-full text-left flex items-center gap-2 px-2 py-1.5 rounded-lg transition-all ${
-                    scenario.objective === o.value ? 'bg-red-600 text-white' : 'text-ink hover:bg-ink-50'
-                  }`}
-                >
-                  <span>{o.icon}</span><span>{o.label}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Tarifs parking */}
-          <div className="p-3 border-b border-ink-50 space-y-3">
-            <div className="label-sm">Tarifs parking</div>
-            <SliderField label="Centre — Pointe" value={scenario.centrePeakPriceCHFh}
-              min={0} max={6} step={0.5} unit=" CHF/h"
-              onChange={v => updateScenario({ centrePeakPriceCHFh: v })}
-              referenceValue={3.0} referenceLabel="actuel"/>
-            <SliderField label="Centre — Creux" value={scenario.centreOffpeakPriceCHFh}
-              min={0} max={4} step={0.5} unit=" CHF/h"
-              onChange={v => updateScenario({ centreOffpeakPriceCHFh: v })}
-              referenceValue={1.5} referenceLabel="actuel"/>
-            <SliderField label="P+R / Périphérie" value={scenario.peripheriePeakPriceCHFh}
-              min={0} max={3} step={0.25} unit=" CHF/h"
-              onChange={v => updateScenario({ peripheriePeakPriceCHFh: v })}
-              referenceValue={0} referenceLabel="gratuit"/>
-          </div>
-
-          {/* Bus gratuits */}
-          <div className="p-3 border-b border-ink-50">
-            <div className="label-sm mb-2">Bus urbains (lignes 1–9)</div>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <div
-                onClick={() => updateScenario({ enableFreeBus: !scenario.enableFreeBus })}
-                className={`w-9 h-5 rounded-full transition-colors flex-shrink-0 flex items-center px-0.5 cursor-pointer ${
-                  scenario.enableFreeBus ? 'bg-green-500' : 'bg-ink-200'
-                }`}
-              >
-                <div className={`w-4 h-4 rounded-full bg-white shadow transition-transform ${scenario.enableFreeBus ? 'translate-x-4' : ''}`}/>
-              </div>
-              <div>
-                <div className="text-ink font-medium">Bus gratuits</div>
-                <div className="text-ink-400 text-[10px]">Mesure actuelle ven. dès 17h + sam.</div>
-              </div>
-            </label>
-            <div className="mt-1.5 text-[10px] text-ink-400 bg-ink-50 rounded-lg p-2">
-              Source: Arrêté Conseil Communal Sion 2023<br/>
-              Coût estimé: ~180 k CHF/an (CarPostal)
-            </div>
-          </div>
-
-          {/* Bouton */}
-          <div className="p-3 mt-auto">
-            <button onClick={handleSimulate} disabled={isSimulating}
-              className="btn-primary w-full justify-center disabled:opacity-50 text-xs">
-              {isSimulating
-                ? <><span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"/>Calcul…</>
-                : '▷ Simuler'}
-            </button>
-            <label className="flex items-center gap-1.5 mt-2 cursor-pointer">
-              <input type="checkbox" checked={compareMode} onChange={e => setCompareMode(e.target.checked)} className="rounded"/>
-              <span className="text-ink-400 text-[10px]">Comparer vs baseline actuel</span>
-            </label>
-          </div>
-        </div>
-
-        {/* ── Carte centrale ────────────────────────────────────────── */}
-        <div className="flex-1 flex flex-col min-w-0 bg-ink-50">
-          <div className="px-3 py-2 bg-white border-b border-ink-100 flex items-center justify-between flex-shrink-0">
-            <div className="text-xs">
-              <span className="font-semibold text-ink">{scenario.name}</span>
-              <span className="text-ink-400 ml-2">
-                {scenario.dayType} · {scenario.startHour}h–{scenario.endHour}h
-                {scenario.enableFreeBus ? ' · 🚌 Bus gratuits' : ''}
-              </span>
-            </div>
-            {results && (
-              <button onClick={() => navigate('/resultats')} className="btn-ghost text-xs py-1">
-                Détail →
-              </button>
-            )}
-          </div>
-          <div className="flex-1 relative">
-            <ZoneMap
-              zoneResults={results?.zoneResults}
-              height="100%"
-              className="absolute inset-0 rounded-none"
-              showODFlows={true}
-              scenarioPeakPrice={scenario.centrePeakPriceCHFh}
-              dayType={scenario.dayType}
-            />
-            {!results && !isSimulating && (
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <div className="bg-white/90 backdrop-blur rounded-xl p-6 text-center shadow-lg max-w-xs">
-                  <div className="text-3xl mb-3">◈</div>
-                  <div className="font-semibold text-ink text-sm">Aucune simulation</div>
-                  <div className="text-xs text-ink-500 mt-1">Configurez le scénario et cliquez sur Simuler</div>
-                </div>
-              </div>
-            )}
-            {isSimulating && (
-              <div className="absolute inset-0 flex items-center justify-center bg-white/50 backdrop-blur-sm">
-                <div className="bg-white rounded-xl p-6 shadow-lg text-center">
-                  <div className="w-8 h-8 border-3 border-red-600 border-t-transparent rounded-full animate-spin mx-auto mb-3"/>
-                  <div className="text-sm font-semibold text-ink">Simulation en cours…</div>
-                  <div className="text-xs text-ink-400 mt-1">Calcul logit sur 8 zones · 12 personas</div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* ── Colonne droite ────────────────────────────────────────── */}
-        <div className="w-80 flex-shrink-0 bg-white border-l border-ink-100 flex flex-col">
-          {/* Onglets droite */}
-          <div className="flex border-b border-ink-100 flex-shrink-0">
-            {([
-              { id: 'kpi',     label: 'KPIs',    icon: '◉' },
-              { id: 'od',      label: 'OD',      icon: '↗' },
-              { id: 'sources', label: 'Sources', icon: '📋' },
-            ] as const).map(t => (
-              <button key={t.id} onClick={() => setRightTab(t.id)}
-                className={`flex-1 text-xs py-2 border-b-2 transition-all ${
-                  rightTab === t.id ? 'border-red-600 text-red-700 font-semibold bg-red-50' : 'border-transparent text-ink-500 hover:bg-ink-50'
-                }`}>
-                <span className="mr-1">{t.icon}</span>{t.label}
-              </button>
             ))}
           </div>
-          <div className="flex-1 overflow-y-auto p-3 space-y-3">
+        </div>
 
-          {rightTab === 'kpi' && results ? (
+        <div style={{ flex: 1, position: 'relative' }}>
+          <ZoneMap scenario={scenario} results={results} />
+        </div>
+      </div>
+
+      {/* ── DROITE : Résultats ────────────────────────────────────────────── */}
+      <div style={{ width: 280, background: 'white', borderLeft: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+
+        <div style={{ padding: '12px 16px', borderBottom: '1px solid #f1f5f9', background: '#fafafa' }}>
+          <div style={{ fontSize: 12, fontWeight: 800, color: '#111827' }}>Résultats de simulation</div>
+          {!hasResults && <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 3 }}>Lancez une simulation →</div>}
+        </div>
+
+        <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px' }}>
+
+          {hasResults && results ? (
             <>
-              {/* KPI shift global */}
-              <div className={`rounded-xl p-3 border ${
-                results.globalShiftIndex * 100 > 25 ? 'bg-green-50 border-green-200' :
-                results.globalShiftIndex * 100 > 12 ? 'bg-amber-50 border-amber-200' :
-                'bg-red-50 border-red-200'
-              }`}>
-                <div className="text-[10px] text-ink-500 mb-0.5">Report modal estimé ⚠</div>
-                <div className="text-3xl font-bold font-mono text-ink">
-                  {(results.globalShiftIndex * 100).toFixed(0)}%
+              {/* KPIs principaux */}
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 10, fontWeight: 800, color: '#9ca3af', textTransform: 'uppercase' as const, letterSpacing: '0.06em', marginBottom: 8 }}>
+                  Impact estimé vs baseline
                 </div>
-                <div className="text-[10px] text-ink-500">voiture → autres modes</div>
-                {compareMode && shiftDelta !== null && (
-                  <div className="mt-1.5 pt-1.5 border-t border-ink-200 text-[10px] flex items-center gap-1">
-                    <span className="text-ink-400">vs baseline :</span>
-                    <Delta val={shiftDelta}/>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                  <KPI
+                    icon="🚗" label="Voiture"
+                    value={`${scenarioCar.toFixed(0)}%`}
+                    sub={deltaModal < -0.5 ? `▼ ${Math.abs(deltaModal).toFixed(1)} pts` : deltaModal > 0.5 ? `▲ +${deltaModal.toFixed(1)} pts` : '= stable'}
+                    color={deltaModal < -1 ? '#16a34a' : deltaModal > 1 ? '#dc2626' : '#374151'}
+                    bg={deltaModal < -1 ? '#f0fdf4' : deltaModal > 1 ? '#fef2f2' : '#f8fafc'}
+                  />
+                  <KPI
+                    icon="🚌" label="TP"
+                    value={`${(results.modeSplit?.tp ?? 0).toFixed(0)}%`}
+                    sub={hasResults ? '+' + ((results.modeSplit?.tp ?? 0) - (baselineResults?.modeSplit?.tp ?? 28)).toFixed(1) + ' pts' : ''}
+                    color="#2563eb" bg="#eff6ff"
+                  />
+                </div>
+
+                {/* Report modal */}
+                <div style={{ background: '#f0fdf4', borderRadius: 10, padding: '10px 12px', marginBottom: 8 }}>
+                  <div style={{ fontSize: 11, color: '#15803d', fontWeight: 600, marginBottom: 4 }}>Report modal estimé</div>
+                  <div style={{ fontSize: 26, fontWeight: 900, color: '#15803d', lineHeight: 1 }}>
+                    {Math.abs(deltaModal).toFixed(1)}%
+                  </div>
+                  <div style={{ fontSize: 10, color: '#16a34a', marginTop: 3 }}>
+                    voiture → transports publics
+                  </div>
+                </div>
+
+                {/* Recettes */}
+                {(scenarioRev !== 0 || baselineRev !== 0) && (
+                  <div style={{ background: '#fafafa', borderRadius: 10, padding: '10px 12px', marginBottom: 8 }}>
+                    <div style={{ fontSize: 11, color: '#374151', fontWeight: 600, marginBottom: 4 }}>💰 Recettes parking</div>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: deltaRev >= 0 ? '#15803d' : '#dc2626' }}>
+                      {deltaRev >= 0 ? '+' : ''}CHF {deltaRev.toFixed(0)}/jour
+                    </div>
+                    <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 2 }}>
+                      vs situation actuelle
+                    </div>
                   </div>
                 )}
               </div>
 
-              {/* KPIs grille 2×2 */}
-              <div className="grid grid-cols-2 gap-2">
-                <KPICard label="Zones fort potentiel"
-                  value={results.zoneResults.filter((z: any) => z.category === 'vert').length}
-                  unit={`/${results.zoneResults.length}`} color="green"/>
-                <KPICard label="Risques équité"
-                  value={results.equityFlags.length}
-                  color={results.equityFlags.length > 0 ? 'red' : 'green'}/>
-                {results.estimatedRevenueLossCHFyear !== undefined && (
-                  <KPICard label="Impact recettes/an ⚠"
-                    value={Math.abs(Math.round(results.estimatedRevenueLossCHFyear / 1000))}
-                    unit="k CHF" color={results.estimatedRevenueLossCHFyear < -5000 ? 'red' : 'default'}/>
-                )}
-                {results.co2SavedTonnesYear !== undefined && (
-                  <KPICard label="CO₂ évité ⚠"
-                    value={results.co2SavedTonnesYear} unit=" t/an" color="green"/>
-                )}
-              </div>
-
-              {/* Comparaison vs baseline */}
-              {compareMode && baselineResults && (
-                <div className="rounded-xl border border-ink-200 overflow-hidden">
-                  <div className="bg-ink-50 px-3 py-1.5 text-[10px] font-semibold text-ink-500 uppercase tracking-wide">
-                    Δ vs baseline (situation actuelle)
+              {/* Impact par zone */}
+              {results.zoneResults && (
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 10, fontWeight: 800, color: '#9ca3af', textTransform: 'uppercase' as const, letterSpacing: '0.06em', marginBottom: 8 }}>
+                    Par zone
                   </div>
-                  <div className="divide-y divide-ink-50">
-                    {results.zoneResults.map((z: any) => {
-                      const b = baselineResults.zoneResults.find((bz: any) => bz.zoneId === z.zoneId);
-                      if (!b) return null;
-                      const d = (z.shiftIndex - b.shiftIndex) * 100;
-                      return (
-                        <div key={z.zoneId} className="flex items-center justify-between px-3 py-1.5 text-xs">
-                          <span className="text-ink">{z.label}</span>
-                          <div className="flex items-center gap-1.5">
-                            <CategoryPill category={z.category}/>
-                            <Delta val={d}/>
+                  {Object.entries(results.zoneResults).map(([zoneId, z]: [string, any]) => {
+                    const switchPct = z?.switchPct ?? 0;
+                    const potential = switchPct >= 60 ? 'Fort' : switchPct >= 35 ? 'Modéré' : 'Faible';
+                    const potColor  = switchPct >= 60 ? '#22c55e' : switchPct >= 35 ? '#f59e0b' : '#ef4444';
+                    return (
+                      <div key={zoneId} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, padding: '6px 10px', background: '#f8fafc', borderRadius: 8 }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 11, fontWeight: 600, color: '#374151' }}>{z?.label ?? zoneId}</div>
+                          <div style={{ fontSize: 10, color: '#9ca3af' }}>{z?.priceCHFh?.toFixed(1) ?? '—'} CHF/h · {(z?.occupancyRate * 100)?.toFixed(0) ?? 0}% occ.</div>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontSize: 10, fontWeight: 700, color: potColor, background: `${potColor}18`, padding: '2px 6px', borderRadius: 6 }}>
+                            {potential}
                           </div>
                         </div>
-                      );
-                    })}
-                  </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
 
-              {/* Zones détail */}
-              <div className="rounded-xl border border-ink-100 overflow-hidden">
-                <div className="bg-ink-50 px-3 py-1.5 text-[10px] font-semibold text-ink-500 uppercase tracking-wide">Zones</div>
-                <div className="divide-y divide-ink-50">
-                  {results.zoneResults.map((z: any) => (
-                    <div key={z.zoneId} className="flex items-center justify-between px-3 py-2">
-                      <div>
-                        <div className="text-xs text-ink">{z.label}</div>
-                        {z.avgParkingCostCHF !== undefined && (
-                          <div className="text-[10px] text-ink-400">{z.avgParkingCostCHF} CHF/h · {z.occupancyPct ?? '—'}% occ.</div>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <CategoryPill category={z.category}/>
-                        <span className="text-[10px] font-mono text-ink-400">{(z.shiftIndex * 100).toFixed(0)}%</span>
-                      </div>
-                    </div>
-                  ))}
+              {/* Avertissement */}
+              <div style={{ padding: '8px 10px', background: '#fef3c7', borderRadius: 8, border: '1px solid #fde68a' }}>
+                <div style={{ fontSize: 10, color: '#92400e', lineHeight: 1.5 }}>
+                  ⚠ Résultats indicatifs · Modèle logit RUM · Calibration sur données locales requise avant décision
                 </div>
-              </div>
-
-              {/* Équité */}
-              {results.equityFlags.length > 0 && (
-                <div className="rounded-xl border border-red-200 bg-red-50 p-3">
-                  <div className="text-xs font-semibold text-red-700 mb-1">⚠ Risques équité</div>
-                  {results.equityFlags.map((f: string) => (
-                    <div key={f} className="text-xs text-red-600">• {f}</div>
-                  ))}
-                </div>
-              )}
-
-              {/* Note méthodologique */}
-              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-[10px] text-amber-800">
-                <div className="font-semibold mb-1">⚠ Résultats indicatifs</div>
-                Les chiffres (%, CHF) sont des ordres de grandeur issus du modèle logit.
-                Calibration sur données réelles (comptages) requise avant décision politique.
-                <div className="mt-1 text-amber-600">Modèle : RUM logit multinomial · θ=0.6 · VOT ARE 2020</div>
-              </div>
-
-              {/* Actions */}
-              <div className="space-y-1.5">
-                <button onClick={() => navigate('/resultats')} className="btn-secondary w-full text-xs justify-center">
-                  Résultats détaillés
-                </button>
-                <button onClick={() => navigate('/personas')} className="btn-ghost w-full text-xs justify-center">
-                  Impact par persona
-                </button>
-                <button onClick={() => navigate('/actions')} className="btn-ghost w-full text-xs justify-center">
-                  Plan d'actions
-                </button>
               </div>
             </>
           ) : (
-            <div className="text-center py-8 text-ink-400">
-              <div className="text-3xl mb-3">◈</div>
-              <div className="text-sm font-medium text-ink">Aucune simulation</div>
-              <div className="text-xs text-ink-500 mt-1">Configurez et lancez</div>
+            /* État vide */
+            <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+              <div style={{ fontSize: 36, marginBottom: 12 }}>📊</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 8 }}>
+                Configurez et simulez
+              </div>
+              <div style={{ fontSize: 11, color: '#9ca3af', lineHeight: 1.6 }}>
+                Ajustez le tarif des parkings du centre-ville et cliquez sur <strong>Simuler</strong>
+              </div>
+
+              {/* Rappel tarifs actuels */}
+              <div style={{ marginTop: 20, textAlign: 'left' }}>
+                <div style={{ fontSize: 10, fontWeight: 800, color: '#9ca3af', textTransform: 'uppercase' as const, letterSpacing: '0.06em', marginBottom: 8 }}>
+                  Situation actuelle
+                </div>
+                {[
+                  { label: 'Planta + Scex + Cible', price: 'CHF 3.00/h', note: '1h gratuite', color: '#ef4444' },
+                  { label: 'Gare CFF', price: '~CHF 2.00/h', note: 'estimé', color: '#f97316' },
+                  { label: 'Nord / Roches-Brunes', price: '~CHF 1.50/h', note: 'préférentiel', color: '#3b82f6' },
+                  { label: 'P+R Potences + Stade', price: 'GRATUIT', note: 'BS 11 → centre', color: '#22c55e' },
+                  { label: 'Zone Industrielle', price: 'GRATUIT', note: 'privé', color: '#ec4899' },
+                ].map(item => (
+                  <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
+                    <div style={{ width: 8, height: 8, borderRadius: 2, background: item.color, flexShrink: 0 }} />
+                    <div style={{ flex: 1, fontSize: 10, color: '#374151' }}>{item.label}</div>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: item.price === 'GRATUIT' ? '#22c55e' : '#374151' }}>{item.price}</div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
+        </div>
 
-          {/* OD Tab */}
-          {rightTab === 'od' && (
-            <div className="-mx-3 -mt-3 flex flex-col" style={{ height: 'calc(100vh - 130px)' }}>
-              <ODPanel scenario={scenario} zoneResults={results?.zoneResults}/>
-            </div>
-          )}
-
-          {/* Sources Tab */}
-          {rightTab === 'sources' && <DataSourcesPanel/>}
-          </div>
+        {/* Mention source */}
+        <div style={{ padding: '8px 14px', borderTop: '1px solid #f1f5f9', fontSize: 9, color: '#d1d5db', lineHeight: 1.5 }}>
+          Sources: sion.ch PDFs 2024-2025 · ARE Microrecensement 2015 · MobilityLab
         </div>
       </div>
     </div>
