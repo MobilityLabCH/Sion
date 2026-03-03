@@ -1,82 +1,82 @@
 [
   {
     "zoneId": "centre",
-    "accessIndex": 0.90,
+    "accessIndex": 0.92,
     "timeToCenterMin": 0,
     "peakFreqMin": 10,
     "offpeakFreqMin": 20,
-    "ticketBaseCHF": 3.2,
+    "ticketBaseCHF": 2.20,
     "offpeakDiscountMax": 0.30,
-    "notes": "Excellent accès TP; bus urbains fréquents"
+    "notes": "Résidents centre. isireso zone 1 (urbaine). BS 11-14 · 10 min pointe. CHF 2.20 tarif plein · CHF 1.50 demi-tarif. Source: isireso-sion.ch · bus-sedunois.ch 2025."
   },
   {
     "zoneId": "gare",
     "accessIndex": 0.95,
-    "timeToCenterMin": 8,
+    "timeToCenterMin": 6,
     "peakFreqMin": 8,
     "offpeakFreqMin": 15,
-    "ticketBaseCHF": 3.2,
+    "ticketBaseCHF": 2.20,
     "offpeakDiscountMax": 0.35,
-    "notes": "Hub TP; connexion directe train + bus"
+    "notes": "Hub CFF Sion. isireso zone 1. Connexion directe train + BS 11. CHF 2.20 zone 1. Source: CFF / isireso-sion.ch 2025."
   },
   {
     "zoneId": "est",
-    "accessIndex": 0.65,
-    "timeToCenterMin": 14,
-    "peakFreqMin": 18,
-    "offpeakFreqMin": 35,
-    "ticketBaseCHF": 3.2,
+    "accessIndex": 0.72,
+    "timeToCenterMin": 10,
+    "peakFreqMin": 10,
+    "offpeakFreqMin": 20,
+    "ticketBaseCHF": 2.20,
     "offpeakDiscountMax": 0.25,
-    "notes": "Quelques lignes; fréquence insuffisante hors pointe"
+    "notes": "Bramois / Uvrier. isireso zone 1. BS 11 direct · 10 min · toutes les 10 min en pointe · 20 min hors pointe. CHF 2.20 plein tarif · CHF 1.50 demi-tarif. Source: bus-sedunois.ch · isireso-sion.ch 2025."
   },
   {
     "zoneId": "ouest",
-    "accessIndex": 0.55,
-    "timeToCenterMin": 18,
-    "peakFreqMin": 22,
-    "offpeakFreqMin": 45,
-    "ticketBaseCHF": 3.2,
+    "accessIndex": 0.65,
+    "timeToCenterMin": 8,
+    "peakFreqMin": 20,
+    "offpeakFreqMin": 30,
+    "ticketBaseCHF": 3.20,
     "offpeakDiscountMax": 0.20,
-    "notes": "Desserte limitée; marche à pied souvent nécessaire"
+    "notes": "Châteauneuf-Conthey. isireso zone 2. Train RegionAlps 8 min / bus 331 · 20 min. CHF 3.20 plein tarif · CHF 2.20 demi-tarif. Zone 2 intégrée isireso depuis déc. 2023. Source: isireso-sion.ch · RegionAlps 2025."
   },
   {
     "zoneId": "nord",
-    "accessIndex": 0.45,
-    "timeToCenterMin": 22,
-    "peakFreqMin": 25,
-    "offpeakFreqMin": 50,
-    "ticketBaseCHF": 3.2,
+    "accessIndex": 0.42,
+    "timeToCenterMin": 25,
+    "peakFreqMin": 30,
+    "offpeakFreqMin": 60,
+    "ticketBaseCHF": 4.20,
     "offpeakDiscountMax": 0.20,
-    "notes": "Faible desserte; topographie contraignante"
+    "notes": "Savièse / Grimisuat. isireso zone 3. Bus 341/342 · 25-30 min · 30 min en pointe · 60 min hors pointe. CHF 4.20 plein tarif · CHF 2.90 demi-tarif. Forte dépendance auto. Source: CarPostal horaires 2025."
   },
   {
     "zoneId": "sud",
-    "accessIndex": 0.50,
+    "accessIndex": 0.48,
     "timeToCenterMin": 16,
     "peakFreqMin": 20,
     "offpeakFreqMin": 40,
-    "ticketBaseCHF": 3.2,
+    "ticketBaseCHF": 3.20,
     "offpeakDiscountMax": 0.25,
-    "notes": "Desserte industrielle; TP peu attractif"
+    "notes": "Aproz / Basse-Nendaz accès. isireso zone 2-3. Bus 361/362 via Aproz · 20 min. CHF 3.20-4.20. TP peu attractif pour zone emploi. Source: CarPostal 2025."
   },
   {
     "zoneId": "emploi",
-    "accessIndex": 0.40,
-    "timeToCenterMin": 20,
+    "accessIndex": 0.38,
+    "timeToCenterMin": 22,
     "peakFreqMin": 25,
     "offpeakFreqMin": 60,
-    "ticketBaseCHF": 3.8,
+    "ticketBaseCHF": 3.20,
     "offpeakDiscountMax": 0.15,
-    "notes": "Zone éloignée; TP peu compétitif sans mesure employeur"
+    "notes": "Zone emploi périphérique. isireso zone 2. TP peu compétitif sans mesure employeur. Potentiel covoiturage/navette entreprise. Source: estimation MobilityLab / bus-sedunois.ch."
   },
   {
     "zoneId": "peripherie",
-    "accessIndex": 0.25,
-    "timeToCenterMin": 35,
-    "peakFreqMin": 40,
-    "offpeakFreqMin": 90,
-    "ticketBaseCHF": 4.5,
+    "accessIndex": 0.28,
+    "timeToCenterMin": 12,
+    "peakFreqMin": 10,
+    "offpeakFreqMin": 20,
+    "ticketBaseCHF": 4.20,
     "offpeakDiscountMax": 0.10,
-    "notes": "Très faible desserte; dépendance auto structurelle"
+    "notes": "P+R Potences + Stade/Echutes. Desserte P+R : BS 11 · 10 min · toutes les 10 min pointe. CHF 4.20 tarif isireso zone 3 (depuis communes éloignées). Gratuit ven. 17h→sam. 24h. Source: sion.ch / CarPostal 2025."
   }
 ]
