@@ -8,11 +8,13 @@ import parkingRaw from './data/parking.json';
 import tpRaw from './data/tp.json';
 import personasRaw from './data/personas.json';
 import zonesRaw from './data/zones.json';
+import odDemandRaw from './data/od_demand.json';
 
 const parkingData = parkingRaw as any[];
 const tpData = tpRaw as any[];
 const personasData = personasRaw as any[];
 const zonesData = zonesRaw as any;
+const odDemandData = odDemandRaw as any;
 
 // ─── Env ───────────────────────────────────────────────────────────────────────
 export interface Env {
@@ -92,6 +94,7 @@ export default {
         parking: parkingData,
         tp: tpData,
         personas: personasData,
+        origins: odDemandData.origins ?? [],
         meta: {
           source: 'sion.ch · MobilityLab Sion 2024-2025',
           tomtomLive: !!env.TOMTOM_API_KEY,
@@ -114,6 +117,7 @@ export default {
       try {
         const results = runSimulation(scenario, parkingData, tpData, personasData);
 
+        // Optionnel: enrichissement TomTom
         let trafficData: any = null;
         if (env.TOMTOM_API_KEY) {
           try {
@@ -126,6 +130,7 @@ export default {
                   seg.freeFlowSpeed > 0
                     ? Math.max(0, Math.round((1 - seg.currentSpeed / seg.freeFlowSpeed) * 100))
                     : 0;
+
                 trafficData = {
                   connected: true,
                   source: 'TomTom Traffic Flow API v4',
