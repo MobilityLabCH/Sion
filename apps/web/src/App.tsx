@@ -7,6 +7,7 @@ import Results from './pages/Results';
 import Personas from './pages/Personas';
 import Actions from './pages/Actions';
 import Ameliorations from './pages/Ameliorations';
+import ODPage from './pages/ODPage';
 
 export default function App() {
   return (
@@ -20,6 +21,7 @@ export default function App() {
             <Route path="/personas" element={<Personas />} />
             <Route path="/actions" element={<Actions />} />
             <Route path="/ameliorations" element={<Ameliorations />} />
+            <Route path="/od" element={<ODPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>
