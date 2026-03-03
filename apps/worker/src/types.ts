@@ -1,4 +1,6 @@
-// ─── Types partagés ────────────────────────────────────────────────────────
+// ─── Types partagés Worker ─────────────────────────────────────────────────
+
+export type DayType = 'weekday' | 'friday' | 'saturday' | 'sunday';
 
 export interface Scenario {
   id?: string;
@@ -6,70 +8,111 @@ export interface Scenario {
   createdAt?: string;
 
   // Parking centre
-  centrePeakPriceCHFh: number;      // 0 – 10
-  centreOffpeakPriceCHFh: number;   // 0 – 10
+  centrePeakPriceCHFh: number;
+  centreOffpeakPriceCHFh: number;
   // Parking périphérie
-  peripheriePeakPriceCHFh: number;  // 0 – 5
+  peripheriePeakPriceCHFh: number;
   peripherieOffpeakPriceCHFh: number;
 
   // Progressive pricing
-  progressiveSlopeFactor: number;   // 1.0 = linéaire, 2.0 = doublement après 1h
+  progressiveSlopeFactor: number;
+
+  // Fenêtre temporelle
+  dayType?: DayType;
+  startHour?: number;
+  endHour?: number;
 
   // TP discount hors-pointe
-  tpOffpeakDiscountPct: number;     // 0 – 50 (%)
+  tpOffpeakDiscountPct: number;
 
-  // Toggles mesures complémentaires
+  // Toggles
   enableCovoiturage: boolean;
   enableTAD: boolean;
   enableTaxiBons: boolean;
+  enableFreeBus?: boolean;
 
-  // Objectif principal
-  objective: 'reduce-peak-car' | 'protect-short-stay' | 'equity-access';
+  // Objectif
+  objective: 'reduce-peak-car' | 'protect-short-stay' | 'equity-access' | 'attractivity' | 'revenue';
 }
 
-export interface ZoneResult {
+export interface ParkingRule {
+  dayType: DayType;
+  startHour: number;
+  endHour: number;
+  pricePerHour: number;
+  freeFirstMin?: number | null;
+  maxDurationH?: number | null;
+  note?: string;
+}
+
+export interface ParkingData {
+  id: string;
   zoneId: string;
-  label: string;
-  elasticityScore: number;           // 0–100
-  category: 'vert' | 'orange' | 'rouge';
-  shiftIndex: number;                // % de bascule voiture -> alternatives (0–1)
-  estimatedThreshold?: number;       // CHF/h où la bascule devient significative
-  equityFlag: boolean;
-  equityReason?: string;
-  modeSplit: ModeSplit;
+  name: string;
+  capacity: number;
+  capacityPMR?: number;
+  basePriceCHFh: number;
+  peakMultiplier: number;
+  offpeakMultiplier: number;
+  freeFirstMinutes?: number | null;
+  walkDistanceM: number;
+  frictionIndex: number;
+  source: string;
+  license: string;
+  confidence: number;
+  notes?: string;
+  rules?: ParkingRule[];
 }
 
 export interface ModeSplit {
-  car: number;      // probabilité softmax
+  car: number;
   tp: number;
   covoiturage: number;
   tad: number;
   taxiBons: number;
 }
 
+export interface ZoneResult {
+  zoneId: string;
+  label: string;
+  elasticityScore: number;
+  category: 'vert' | 'orange' | 'rouge';
+  shiftIndex: number;
+  estimatedThreshold?: number;
+  equityFlag: boolean;
+  equityReason?: string;
+  modeSplit: ModeSplit;
+  occupancyPct?: number;
+  avgParkingCostCHF?: number;
+  avgWalkMinutes?: number;
+}
+
 export interface PersonaResult {
   personaId: string;
   label: string;
   emoji: string;
-  beforeCostCHF: number;            // coût total avant scénario
+  beforeCostCHF: number;
   afterCostCHF: number;
   costDeltaCHF: number;
   preferredMode: string;
   preferredModeBefore: string;
   equityFlag: boolean;
   tags: string[];
-  explanation: string[];            // 2-3 bullets
+  explanation: string[];
 }
 
 export interface SimulationResults {
   scenarioId: string;
   timestamp: string;
-  globalShiftIndex: number;         // % voiture -> alternatives, global
+  globalShiftIndex: number;
   zoneResults: ZoneResult[];
   personaResults: PersonaResult[];
-  equityFlags: string[];            // zones/personas potentiellement pénalisés
+  equityFlags: string[];
   hypotheses: string[];
   summary: string;
+  estimatedRevenueLossCHFyear?: number;
+  estimatedCostPerVisitorCHF?: number;
+  co2SavedTonnesYear?: number;
 }
 
 export interface InsightsResponse {
@@ -94,26 +137,14 @@ export interface ActionItem {
   priority: 'haute' | 'moyenne' | 'basse';
 }
 
-export interface ParkingData {
-  zoneId: string;
-  capacity: number;
-  basePriceCHFh: number;
-  peakMultiplier: number;
-  offpeakMultiplier: number;
-  longStayShare: number;
-  frictionIndex: number;
-  notes?: string;
-}
-
 export interface TPData {
+  id: string;
   zoneId: string;
+  name: string;
   accessIndex: number;
-  timeToCenterMin: number;
-  peakFreqMin: number;
-  offpeakFreqMin: number;
-  ticketBaseCHF: number;
-  offpeakDiscountMax: number;
-  notes?: string;
+  avgFrequencyMin: number;
+  avgFareCHF: number;
+  source?: string;
 }
 
 export interface Persona {
@@ -133,6 +164,6 @@ export interface Persona {
     durationType: 'short' | 'long';
   };
   tags: string[];
-  income: 'faible' | 'moyen' | 'élevé';
+  income: string;
   alternatives: string[];
 }
