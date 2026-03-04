@@ -259,7 +259,7 @@ export default function ZoneMap({
         data: {
           type: 'Feature',
           properties: { zoneId: z.id, label: z.label },
-          geometry: { type: 'Polygon', coordinates: z.coords as [number, number][][] },
+          geometry: { type: 'Polygon', coordinates: z.coords as unknown as [number, number][][] },
         },
       });
 
@@ -273,7 +273,7 @@ export default function ZoneMap({
       });
 
       // Centroïd pour le label
-      const pts = (z.coords[0] as [number, number][]).slice(0, -1);
+      const pts = (z.coords[0] as unknown as [number, number][]).slice(0, -1);
       const cx = pts.reduce((s, p) => s + p[0], 0) / pts.length;
       const cy = pts.reduce((s, p) => s + p[1], 0) / pts.length;
       const labelText = res
