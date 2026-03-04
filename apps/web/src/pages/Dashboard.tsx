@@ -73,15 +73,15 @@ export default function Dashboard() {
   const baseline     = BASELINE_SCENARIO;
   const changed      = centrePrix !== baseline.centrePeakPriceCHFh;
 
-  const baselineCar  = baselineResults?.modeSplit?.car  ?? 62;
-  const scenarioCar  = results?.modeSplit?.car ?? baselineCar;
-  const deltaModal   = Math.round((scenarioCar - baselineCar) * 10) / 10;
+  const baselineShift = baselineResults?.globalShiftIndex ?? 0;
+  const scenarioShift = results?.globalShiftIndex ?? 0;
+  const deltaModal    = Math.round((scenarioShift - baselineShift) * 100 * 10) / 10;
 
   const hasResults   = results !== null;
 
   const sev       = trafficData?.severity ?? 'fluide';
   const speed     = trafficData?.currentSpeed ?? 17;
-  const sevColor  = sev === 'fluide' ? '#16a34a' : sev === 'modere' ? '#d97706' : sev === 'dense' ? '#ea580c' : '#dc2626';
+  const sevColor  = sev === 'fluide' ? '#16a34a' : sev === 'modéré' ? '#d97706' : sev === 'dense' ? '#ea580c' : '#dc2626';
 
   const handleCentrePrice = (v: number) => {
     updateScenario({ centrePeakPriceCHFh: v, centreOffpeakPriceCHFh: v });
@@ -250,13 +250,13 @@ export default function Dashboard() {
                 <div style={{ flex: 1, background: '#fef2f2', borderRadius: 10, padding: '8px', textAlign: 'center' }}>
                   <div style={{ fontSize: 11, color: '#dc2626', fontWeight: 600, marginBottom: 2 }}>🚗 Voiture</div>
                   <div style={{ fontSize: 20, fontWeight: 900, color: '#dc2626', lineHeight: 1 }}>
-                    {scenarioCar.toFixed(0)}%
+                    {Math.round((1 - scenarioShift) * 62).toString()}%
                   </div>
                 </div>
                 <div style={{ flex: 1, background: '#eff6ff', borderRadius: 10, padding: '8px', textAlign: 'center' }}>
                   <div style={{ fontSize: 11, color: '#2563eb', fontWeight: 600, marginBottom: 2 }}>🚌 TP</div>
                   <div style={{ fontSize: 20, fontWeight: 900, color: '#2563eb', lineHeight: 1 }}>
-                    {(results.modeSplit?.tp ?? 0).toFixed(0)}%
+                    {Math.round(scenarioShift * 62).toString()}%
                   </div>
                 </div>
               </div>
