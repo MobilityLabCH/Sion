@@ -435,7 +435,7 @@ function ODSimulator() {
                         <span style={{ fontSize:16 }}>{o.emoji}</span>
                         <div style={{ flex:1, minWidth:0 }}>
                           <div style={{ fontSize:12, fontWeight:700, color:'#111827' }}>{o.label}</div>
-                          <div style={{ fontSize:10, color:'#9ca3af', marginTop:1 }}>🚗 {o.carTimeMin}' · 🚌 {o.tpTimeMin}' · {o.tpLine}</div>
+                          <div style={{ fontSize:10, color:'#9ca3af', marginTop:1 }}>🚗 {o.carTimeMin} min · 🚌 {o.tpTimeMin} min · {o.tpLine}</div>
                         </div>
                         <div style={{ textAlign:'right' as const, flexShrink:0 }}>
                           <div style={{ fontSize:12, fontWeight:800, color:col }}>×{r.toFixed(2)}</div>
