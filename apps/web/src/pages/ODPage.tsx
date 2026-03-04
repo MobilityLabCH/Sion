@@ -67,7 +67,9 @@ const CAP_TEXT: Record<CaptivityCls, string> = {
   competitive: '#15803d', moderate: '#b45309', captive: '#dc2626',
 };
 const CAP_LABEL: Record<CaptivityCls, string> = {
-  competitive: 'TP compétitif', moderate: 'TP moyen (×1.2–1.6)', captive: 'Captif voiture (>×1.6)',
+  competitive: '🟢 TP compétitif',
+  moderate:    '🟡 TP moyen (×1.2–1.6)',
+  captive:     '🔴 Captif voiture (>×1.6)',
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -274,7 +276,7 @@ function ODSimulator() {
             {(['competitive','moderate','captive'] as CaptivityCls[]).map(c => (
               <div key={c} style={{ display:'flex', alignItems:'center', gap:7, marginBottom:5, fontSize:11 }}>
                 <div style={{ width:9, height:9, borderRadius:'50%', background:CAP_COLORS[c] }} />
-                <span style={{ color:'#374151' }}>🟢🟡🔴'.split('')[['competitive','moderate','captive'].indexOf(c)]} {CAP_LABEL[c]}</span>
+                <span style={{ color:'#374151' }}>{CAP_LABEL[c]}</span>
               </div>
             ))}
           </div>
