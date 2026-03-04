@@ -1,512 +1,598 @@
+/**
+ * ScenarioBuilder.tsx  --  Simulateur de tarification · Sion
+ *
+ * Page de construction de scenario : reference officielle + leviers + synthese
+ * Sources : sion.ch PDFs 2024-2025, document zones horodateurs 03.2025
+ *
+ * Chemin : apps/web/src/pages/ScenarioBuilder.tsx
+ */
+
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../hooks/store';
-import SliderField from '../components/SliderField.tsx';
-import ToggleField from '../components/ToggleField.tsx';
-import type { Scenario } from '../types.ts';
+import type { Scenario } from '../types';
+import { BASELINE_SCENARIO } from '../types';
 
-const OBJECTIVES = [
+// ─── Donnees officielles Sion (sources verifiees) ─────────────────────────────
+
+const PARKING_TABLE = [
   {
-    value: 'reduce-peak-car',
-    label: 'Réduire la voiture en pointe',
-    icon: '🚗',
-    description: 'Maximiser le report modal voiture → TP et alternatives en heure de pointe',
+    name: 'Parking de la Planta',
+    type: 'Couvert', zone: 'Centre', places: 562,
+    pricePeak: 'CHF 3.00/h', priceOff: 'CHF 3.00/h',
+    freeRules: '1h gratuite · gratuit 12h-13h30 · ven.17h-sam.24h · nuits · dim.',
+    aboPendulaire: 'CHF 160/mois',
+    address: 'Place de la Planta',
+    lever: true, editable: true,
+    source: 'sion.ch PDF 15.07.2024', confidence: 'Officiel',
   },
   {
-    value: 'protect-short-stay',
-    label: 'Protéger la courte durée / commerces',
-    icon: '🛍',
-    description: 'Tarification favorable aux visites courtes; décourage le stationnement longue durée pendulaire',
+    name: 'Parking du Scex',
+    type: 'Couvert', zone: 'Centre', places: 658,
+    pricePeak: 'CHF 3.00/h', priceOff: 'CHF 3.00/h',
+    freeRules: '1h gratuite · gratuit 12h-13h30 · ven.17h-sam.24h · nuits · dim.',
+    aboPendulaire: 'CHF 160/mois',
+    address: 'Rue du Scex',
+    lever: true, editable: true,
+    source: 'sion.ch PDF 11.08.2025', confidence: 'Officiel',
   },
   {
-    value: 'equity-access',
-    label: 'Équité & accessibilité',
-    icon: '⚖️',
-    description: 'Minimiser l\'impact sur les personas à revenus modestes et dépendants de la voiture',
+    name: 'Parking de la Cible',
+    type: 'Couvert', zone: 'Centre', places: 204,
+    pricePeak: '~CHF 3.00/h', priceOff: '~CHF 3.00/h',
+    freeRules: 'Presume identique Planta/Scex',
+    aboPendulaire: 'N/D',
+    address: 'Rue de la Porte-Neuve',
+    lever: true, editable: true,
+    source: 'sion.ch (estime)', confidence: 'Estime',
   },
-] as const;
-
-// ─── Données de référence officielles ─────────────────────────────────────
-// Sources: sion.ch PDFs Planta (15.07.2024) + Scex (11.08.2025)
-//          CarPostal horaires 2025 · isireso-sion.ch · bus-sedunois.ch
-
-const REFERENCE = {
-  parking: [
-    {
-      name: 'Planta (562 pl.) + Scex (658 pl.)',
-      zone: 'Centre',
-      price: '1h gratuite · puis CHF 3.00/h',
-      detail: 'CHF 0.20/h après 11h · gratuit ven.17h–sam.24h',
-      source: 'sion.ch PDFs 2024-2025',
-      confidence: '✓ officiel',
-    },
-    {
-      name: 'Parking de la Cible',
-      zone: 'Centre',
-      price: '~CHF 3.00/h',
-      detail: '204 places · tarif estimé identique Planta/Scex',
-      source: 'sion.ch (estimé)',
-      confidence: '⚠ estimé',
-    },
-    {
-      name: 'Nord (282 pl.) · Roches-Brunes (300 pl.) · St-Guérin (66 pl.)',
-      zone: 'Périphérie centre',
-      price: '~CHF 1.50/h',
-      detail: 'Tarif préférentiel visible sur carte sion.ch',
-      source: 'sion.ch carte mobilité',
-      confidence: '⚠ estimé',
-    },
-    {
-      name: 'P+R Potences (Sion-Ouest)',
-      zone: 'Périphérie',
-      price: 'GRATUIT',
-      detail: '450 places · BS 11 → centre · toutes les 10 min',
-      source: 'sion.ch / CarPostal officiel',
-      confidence: '✓ officiel',
-    },
-    {
-      name: 'P+R Stade / Échutes (Sion-Est)',
-      zone: 'Périphérie',
-      price: 'GRATUIT',
-      detail: '460 places · BS 11 → centre · toutes les 10 min',
-      source: 'sion.ch / CarPostal officiel',
-      confidence: '✓ officiel',
-    },
-  ],
-  tp: [
-    {
-      name: 'Bus Sédunois BS 11-14 (urbain)',
-      freq: '10 min pointe · 20 min creux',
-      price: 'CHF 2.20 (zone 1)',
-      detail: 'Gratuit ven.17h–sam.24h · 100% électrique',
-      source: 'bus-sedunois.ch 2025',
-    },
-    {
-      name: 'Châteauneuf-Conthey ↔ Sion',
-      freq: '30 min (train) · 20 min (bus 331)',
-      price: 'CHF 3.20 (zone 2)',
-      detail: 'RegionAlps 8 min · isireso zone 2 depuis déc.2023',
-      source: 'RegionAlps / isireso 2025',
-    },
-    {
-      name: 'Savièse / Grimisuat ↔ Sion',
-      freq: '30 min pointe · 60 min creux',
-      price: 'CHF 4.20 (zone 3)',
-      detail: 'Bus 341/342/386 · 22-30 min',
-      source: 'CarPostal 2025',
-    },
-    {
-      name: 'Nendaz / Anzère ↔ Sion',
-      freq: '30-60 min',
-      price: 'CHF 5.20 (zone 4)',
-      detail: 'Bus 361/362/351 · 35-45 min',
-      source: 'CarPostal 2025',
-    },
-    {
-      name: 'TAD Valais (taxibus)',
-      freq: 'Sur réservation',
-      price: 'CHF 2.50 base + 0.35/km',
-      detail: 'Zones mal desservies · à la demande',
-      source: 'CarPostal / Valais 2025',
-    },
-  ],
-};
-
-// ─── Scénarios prédéfinis ──────────────────────────────────────────────────
-// NB: baseline = situation actuelle Sion (CHF 3.00/h après 1h gratuite)
-
-const PRESETS = [
   {
-    name: 'Situation actuelle Sion',
-    description: 'Tarif Planta/Scex officiel (1h gratuite + CHF 3/h)',
-    icon: '📍',
-    values: {
-      centrePeakPriceCHFh: 3.0, centreOffpeakPriceCHFh: 3.0,
+    name: 'Parking Roches-Brunes',
+    type: 'Couvert', zone: 'Pericentre Est', places: 370,
+    pricePeak: '~CHF 1.50/h', priceOff: '~CHF 1.50/h',
+    freeRules: 'Tarif preferentiel · details a confirmer',
+    aboPendulaire: 'N/D',
+    address: 'Av. de Tourbillon',
+    lever: false, editable: false,
+    source: 'scan-park.com · sion.ch', confidence: 'Estime',
+  },
+  {
+    name: 'Parking St-Guerin',
+    type: 'Couvert', zone: 'Pericentre', places: 66,
+    pricePeak: '~CHF 1.50/h', priceOff: '~CHF 1.50/h',
+    freeRules: 'Tarif preferentiel · details a confirmer',
+    aboPendulaire: 'N/D',
+    address: 'Rue de St-Guerin',
+    lever: false, editable: false,
+    source: 'sion.ch stationnement', confidence: 'Estime',
+  },
+  {
+    name: 'Parking Gare CFF',
+    type: 'Couvert', zone: 'Gare', places: 300,
+    pricePeak: '~CHF 2.00/h', priceOff: '~CHF 2.00/h',
+    freeRules: 'Tarif CFF (estime)',
+    aboPendulaire: 'N/D',
+    address: 'Av. de la Gare',
+    lever: false, editable: false,
+    source: 'CFF / estime', confidence: 'Estime',
+  },
+  {
+    name: 'P+R Potences (Sion-Ouest)',
+    type: 'P+R', zone: 'Peripherie Ouest', places: 450,
+    pricePeak: 'GRATUIT', priceOff: 'GRATUIT',
+    freeRules: 'Gratuit permanence · BS 11 toutes 10 min',
+    aboPendulaire: 'N/A',
+    address: 'Av. des Echutes',
+    lever: true, editable: true,
+    source: 'sion.ch · CarPostal 2025', confidence: 'Officiel',
+  },
+  {
+    name: 'P+R Stade / Echutes',
+    type: 'P+R', zone: 'Peripherie Est', places: 460,
+    pricePeak: 'GRATUIT', priceOff: 'GRATUIT',
+    freeRules: 'Gratuit permanence · BS 11 toutes 10 min',
+    aboPendulaire: 'N/A',
+    address: 'Rue des Echutes',
+    lever: true, editable: true,
+    source: 'sion.ch · CarPostal 2025', confidence: 'Officiel',
+  },
+  {
+    name: 'Parking Hopital / SUVA',
+    type: 'Surface', zone: 'Champsec', places: 400,
+    pricePeak: 'Prive/Mixte', priceOff: 'Prive/Mixte',
+    freeRules: 'Parking visiteurs paye (taux inconnu) + abonnes hopital',
+    aboPendulaire: 'N/D',
+    address: 'Av. du Grand-Champsec 80-90',
+    lever: false, editable: false,
+    source: 'hopitalduvalais.ch · estimation', confidence: 'Estime',
+  },
+  {
+    name: 'Zone Industrielle Ronquoz/CERM',
+    type: 'Surface', zone: 'Zone Industrielle', places: 1200,
+    pricePeak: 'GRATUIT', priceOff: 'GRATUIT',
+    freeRules: 'Parking prive employes · pas de levier public direct',
+    aboPendulaire: 'N/A',
+    address: 'Route de l\'Industrie',
+    lever: false, editable: false,
+    source: 'Estimation ARE Microrecensement 2015', confidence: 'Estime',
+  },
+];
+
+// Zones horodateurs (source officielle sion.ch 03.2025)
+const HORODATEUR_ZONES = [
+  { zone: 'Zone 1', label: 'Hyper-centre', tarif: 'CHF 2.00/h', durMax: '90 min', gratuit: 'dim. + jours feries, 12h-13h30, ven.17h-19h, nuits' },
+  { zone: 'Zone 2', label: 'Centre',       tarif: 'CHF 1.50/h', durMax: '5h',     gratuit: 'dim. + jours feries, nuits' },
+  { zone: 'Zone 3', label: 'Peripherie',   tarif: 'CHF 1.50/h', durMax: '10h',    gratuit: 'dim. + jours feries, nuits' },
+  { zone: 'Zone 4', label: 'Ancien Stand', tarif: 'CHF 1.50/h (30min offertes)', durMax: '5h', gratuit: 'nuits 17h-7h30' },
+  { zone: 'Zone 7', label: 'Oscar Bider',  tarif: 'CHF 1.50/h (3h), puis CHF 5/j', durMax: '15 jours', gratuit: 'dim. + 12h-13h30 + nuits' },
+  { zone: 'Zone 8', label: 'Blancherie',   tarif: 'CHF 1.50/h (30min offertes)', durMax: '10h', gratuit: 'nuits 19h-7h30' },
+];
+
+// Scenarios prédéfinis
+const PRESETS: { name: string; emoji: string; desc: string; patch: Partial<Scenario> }[] = [
+  {
+    name: 'Situation actuelle',
+    emoji: '📋',
+    desc: 'Baseline Sion 2025 -- Planta/Scex CHF 3/h, 1h gratuite, P+R gratuits',
+    patch: {
+      centrePeakPriceCHFh:    3.0,
+      centreOffpeakPriceCHFh: 3.0,
+      peripheriePeakPriceCHFh: 0,
+      peripherieOffpeakPriceCHFh: 0,
+      progressiveSlopeFactor: 1.0,
+      tpOffpeakDiscountPct: 0,
+      enableCovoiturage: false, enableTAD: false, enableTaxiBons: false,
+      objective: 'reduce-peak-car',
+    },
+  },
+  {
+    name: 'Tarification haute',
+    emoji: '📈',
+    desc: 'CHF 5/h au centre -- incite fortement au report modal',
+    patch: {
+      centrePeakPriceCHFh: 5.0, centreOffpeakPriceCHFh: 4.0,
       peripheriePeakPriceCHFh: 0, peripherieOffpeakPriceCHFh: 0,
-      tpOffpeakDiscountPct: 0, progressiveSlopeFactor: 1.0,
+      progressiveSlopeFactor: 1.5, tpOffpeakDiscountPct: 20,
+      enableCovoiturage: false, enableTAD: false, enableTaxiBons: false,
+      objective: 'reduce-peak-car',
     },
   },
   {
-    name: 'Différenciation pointe/creux',
-    description: 'Hausse en pointe +33% · remise creux · rabais TP',
-    icon: '📈',
-    values: {
-      centrePeakPriceCHFh: 4.0, centreOffpeakPriceCHFh: 2.0,
+    name: 'Gratuite centre',
+    emoji: '🆓',
+    desc: 'Parking centre gratuit -- maximalise attractivite commerces',
+    patch: {
+      centrePeakPriceCHFh: 0, centreOffpeakPriceCHFh: 0,
       peripheriePeakPriceCHFh: 0, peripherieOffpeakPriceCHFh: 0,
-      tpOffpeakDiscountPct: 20, progressiveSlopeFactor: 1.2,
+      progressiveSlopeFactor: 1.0, tpOffpeakDiscountPct: 0,
+      enableCovoiturage: false, enableTAD: false, enableTaxiBons: false,
+      objective: 'attractivity',
     },
   },
   {
-    name: 'Tarification dynamique forte',
-    description: 'Différentiel pointe/creux maximal + alternatives',
-    icon: '⚡',
-    values: {
-      centrePeakPriceCHFh: 5.0, centreOffpeakPriceCHFh: 1.5,
-      peripheriePeakPriceCHFh: 0.5, peripherieOffpeakPriceCHFh: 0,
-      tpOffpeakDiscountPct: 35, progressiveSlopeFactor: 1.5,
-    },
-  },
-  {
-    name: 'Équité maximale',
-    description: 'Hausse limitée + mesures compensatoires activées',
-    icon: '⚖️',
-    values: {
-      centrePeakPriceCHFh: 3.5, centreOffpeakPriceCHFh: 2.5,
+    name: 'P+R + TP subventionne',
+    emoji: '🚌',
+    desc: 'Centre CHF 4/h + P+R gratuit + rabais TP 25% -- favorise alternatives',
+    patch: {
+      centrePeakPriceCHFh: 4.0, centreOffpeakPriceCHFh: 3.0,
       peripheriePeakPriceCHFh: 0, peripherieOffpeakPriceCHFh: 0,
-      tpOffpeakDiscountPct: 30, progressiveSlopeFactor: 1.1,
+      progressiveSlopeFactor: 1.2, tpOffpeakDiscountPct: 25,
+      enableCovoiturage: true, enableTAD: false, enableTaxiBons: false,
+      objective: 'equity-access',
     },
   },
 ];
 
-// ─── Composant ────────────────────────────────────────────────────────────────
+// ─── Sous-composant Slider ─────────────────────────────────────────────────────
 
-export default function ScenarioBuilder() {
-  const { scenario, updateScenario, runSimulation, isSimulating } = useApp();
-  const navigate = useNavigate();
+function Slider({ label, value, min, max, step, baseline, onChange, unit, note }: {
+  label: string; value: number; min: number; max: number; step: number;
+  baseline: number; onChange: (v: number) => void; unit: string; note?: string;
+}) {
+  const pct = ((value - min) / (max - min)) * 100;
+  const bPct = ((baseline - min) / (max - min)) * 100;
+  const changed = Math.abs(value - baseline) > 0.01;
+  const col = changed ? (value > baseline ? '#dc2626' : '#16a34a') : '#2563eb';
 
-  const handleSimulate = async () => {
-    await runSimulation();
-    navigate('/resultats');
-  };
-
-  const applyPreset = (preset: typeof PRESETS[0]) => {
-    updateScenario({ ...preset.values, name: preset.name });
-  };
-
-  // Δ vs baseline actuel
-  const deltacentrePeak = scenario.centrePeakPriceCHFh - 3.0;
-  const ratePeakOffpeak = scenario.centrePeakPriceCHFh / Math.max(0.1, scenario.centreOffpeakPriceCHFh);
+  const fmt = (v: number) => v === 0 ? 'GRATUIT' : (unit === 'CHF' ? 'CHF ' + v.toFixed(1) + '/h' : v.toFixed(0) + unit);
 
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
-      <div className="animate-fade-up mb-8">
-        <h1 className="section-title">Configurateur de scénario</h1>
-        <p className="text-ink-500 mt-1 text-sm">
-          Simulez l'impact sur la mobilité sédunoise.
-          Baseline = situation actuelle Sion (1h gratuite · CHF 3.00/h · P+R gratuits).
-        </p>
-      </div>
-
-      {/* Presets */}
-      <div className="mb-6 animate-fade-up animate-fade-up-delay-1">
-        <div className="label-sm mb-3">Scénarios prédéfinis</div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {PRESETS.map(preset => (
-            <button
-              key={preset.name}
-              onClick={() => applyPreset(preset)}
-              className={`text-left p-3 rounded-xl border transition-all ${
-                scenario.name === preset.name
-                  ? 'border-accent bg-accent-50'
-                  : 'border-ink-200 bg-white hover:border-accent-300 hover:bg-accent-50'
-              }`}
-            >
-              <div className="text-lg mb-1">{preset.icon}</div>
-              <div className={`text-xs font-semibold ${scenario.name === preset.name ? 'text-accent' : 'text-ink'}`}>
-                {preset.name}
-              </div>
-              <div className="text-xs text-ink-400 mt-0.5 leading-tight">{preset.description}</div>
-            </button>
-          ))}
+    <div style={{ marginBottom: 18 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
+        <span style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>{label}</span>
+        <div style={{ textAlign: 'right' as const }}>
+          <span style={{ fontSize: 16, fontWeight: 900, color: col }}>{fmt(value)}</span>
+          {changed && <div style={{ fontSize: 9, color: '#9ca3af' }}>baseline : {fmt(baseline)}</div>}
         </div>
       </div>
-
-      {/* Scenario name */}
-      <div className="card p-6 mb-6 animate-fade-up animate-fade-up-delay-1">
-        <label className="label-sm mb-2 block">Nom du scénario</label>
+      <div style={{ position: 'relative', height: 6, background: '#e5e7eb', borderRadius: 3, marginBottom: 4 }}>
+        <div style={{ position: 'absolute', left: 0, width: pct + '%', height: '100%', background: col, borderRadius: 3, transition: 'width .15s' }} />
+        <div style={{ position: 'absolute', left: 'calc(' + bPct + '% - 1px)', top: -2, width: 3, height: 10, background: '#9ca3af', borderRadius: 1 }} />
         <input
-          type="text"
-          value={scenario.name || ''}
-          onChange={e => updateScenario({ name: e.target.value })}
-          placeholder="Ex: Hausse modérée centre + TAD"
-          className="w-full px-3 py-2 rounded-lg border border-ink-200 text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent"
+          type="range" min={min} max={max} step={step} value={value}
+          onChange={e => onChange(parseFloat(e.target.value))}
+          style={{ position: 'absolute', inset: 0, width: '100%', opacity: 0, cursor: 'pointer', height: 6 }}
         />
       </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: '#d1d5db' }}>
+        <span>{fmt(min)}</span>
+        {note && <span style={{ color: '#9ca3af', fontStyle: 'italic' as const }}>{note}</span>}
+        <span>{fmt(max)}</span>
+      </div>
+    </div>
+  );
+}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left: Parameters */}
-        <div className="lg:col-span-2 space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+// ─── Toggle ────────────────────────────────────────────────────────────────────
 
-            {/* Parking Centre */}
-            <div className="card p-6 space-y-6 animate-fade-up animate-fade-up-delay-1">
-              <div>
-                <h2 className="font-semibold text-ink text-sm">🏙 Parking centre-ville</h2>
-                <p className="text-xs text-ink-400 mt-0.5">Planta (562 pl.) · Scex (658 pl.) · Cible (204 pl.)</p>
-                <div className="mt-2 text-xs bg-green-50 rounded-lg px-3 py-2 text-green-800 border border-green-200">
-                  <span className="font-semibold">Actuel :</span> 1h gratuite · CHF 3.00/h · gratuit ven.17h–sam.24h
-                </div>
-              </div>
-              <SliderField
-                label="Taux horaire — pointe (7h–9h, 16h–18h)"
-                value={scenario.centrePeakPriceCHFh}
-                min={0} max={8} step={0.5}
-                unit=" CHF/h"
-                onChange={v => updateScenario({ centrePeakPriceCHFh: v })}
-                referenceValue={3.0}
-                referenceLabel="actuel"
-              />
-              <SliderField
-                label="Taux horaire — heures creuses"
-                value={scenario.centreOffpeakPriceCHFh}
-                min={0} max={6} step={0.5}
-                unit=" CHF/h"
-                onChange={v => updateScenario({ centreOffpeakPriceCHFh: v })}
-                referenceValue={3.0}
-                referenceLabel="actuel (pas de distinction)"
-              />
-            </div>
+function Toggle({ label, desc, value, onChange }: {
+  label: string; desc: string; value: boolean; onChange: (v: boolean) => void;
+}) {
+  return (
+    <div
+      onClick={() => onChange(!value)}
+      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 9, cursor: 'pointer', border: '1.5px solid', borderColor: value ? '#2563eb' : '#e5e7eb', background: value ? '#eff6ff' : '#fafafa', marginBottom: 8, transition: 'all .15s' }}
+    >
+      <div style={{ width: 28, height: 16, borderRadius: 8, background: value ? '#2563eb' : '#d1d5db', position: 'relative', flexShrink: 0, transition: 'background .15s' }}>
+        <div style={{ position: 'absolute', top: 2, left: value ? 14 : 2, width: 12, height: 12, borderRadius: '50%', background: 'white', transition: 'left .15s' }} />
+      </div>
+      <div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: value ? '#1e40af' : '#374151' }}>{label}</div>
+        <div style={{ fontSize: 9, color: '#9ca3af' }}>{desc}</div>
+      </div>
+    </div>
+  );
+}
 
-            {/* Parking Périphérie */}
-            <div className="card p-6 space-y-6 animate-fade-up animate-fade-up-delay-1">
-              <div>
-                <h2 className="font-semibold text-ink text-sm">🅿 P+R et périphérie</h2>
-                <p className="text-xs text-ink-400 mt-0.5">Potences (450 pl.) · Stade/Échutes (460 pl.)</p>
-                <div className="mt-2 text-xs bg-green-50 rounded-lg px-3 py-2 text-green-800 border border-green-200">
-                  <span className="font-semibold">Actuel :</span> GRATUIT · BS 11 toutes les 10 min (pointe)
-                </div>
-              </div>
-              <SliderField
-                label="Tarif P+R — pointe"
-                value={scenario.peripheriePeakPriceCHFh}
-                min={0} max={3} step={0.25}
-                unit=" CHF/h"
-                onChange={v => updateScenario({ peripheriePeakPriceCHFh: v })}
-                referenceValue={0}
-                referenceLabel="gratuit"
-              />
-              <SliderField
-                label="Tarif P+R — heures creuses"
-                value={scenario.peripherieOffpeakPriceCHFh}
-                min={0} max={2} step={0.25}
-                unit=" CHF/h"
-                onChange={v => updateScenario({ peripherieOffpeakPriceCHFh: v })}
-                referenceValue={0}
-                referenceLabel="gratuit"
-              />
-            </div>
+// ─── Page principale ───────────────────────────────────────────────────────────
 
-            {/* TP */}
-            <div className="card p-6 space-y-6 animate-fade-up animate-fade-up-delay-2">
-              <div>
-                <h2 className="font-semibold text-ink text-sm">🚌 Transports publics</h2>
-                <p className="text-xs text-ink-400 mt-0.5">Bus Sédunois · CarPostal · RegionAlps</p>
-                <div className="mt-2 text-xs bg-ink-50 rounded-lg px-3 py-2 text-ink-600">
-                  Zone 1: CHF 2.20 · Zone 2: CHF 3.20 · Zone 3: CHF 4.20 · Zone 4: CHF 5.20
-                </div>
-              </div>
-              <SliderField
-                label="Rabais heure creuse TP"
-                value={scenario.tpOffpeakDiscountPct}
-                min={0} max={50} step={5}
-                unit="%"
-                onChange={v => updateScenario({ tpOffpeakDiscountPct: v })}
-                referenceValue={0}
-                referenceLabel="actuel (0%)"
-              />
-            </div>
+export default function ScenarioBuilder() {
+  const navigate = useNavigate();
+  const { scenario, updateScenario, setScenario, runSimulation, isSimulating } = useApp();
 
-            {/* Progressive pricing */}
-            <div className="card p-6 space-y-6 animate-fade-up animate-fade-up-delay-2">
-              <div>
-                <h2 className="font-semibold text-ink text-sm">📈 Progressivité longue durée</h2>
-                <p className="text-xs text-ink-400 mt-0.5">Majoration supplémentaire au-delà de 1h</p>
-                <div className="mt-2 text-xs bg-ink-50 rounded-lg px-3 py-2 text-ink-600">
-                  ×1.0 = barème actuel (1h gratuite + CHF 3/h). ×1.5 = pendulaire paie 50% de plus
-                </div>
-              </div>
-              <SliderField
-                label="Multiplicateur longue durée (>1h)"
-                value={scenario.progressiveSlopeFactor}
-                min={1} max={3} step={0.1}
-                unit="×"
-                onChange={v => updateScenario({ progressiveSlopeFactor: v })}
-                referenceValue={1.0}
-                referenceLabel="actuel"
-              />
-            </div>
+  const base = BASELINE_SCENARIO;
+  const changedParams: string[] = [];
+  if (scenario.centrePeakPriceCHFh !== base.centrePeakPriceCHFh) changedParams.push('Tarif centre');
+  if (scenario.peripheriePeakPriceCHFh !== base.peripheriePeakPriceCHFh) changedParams.push('Tarif P+R');
+  if (scenario.progressiveSlopeFactor !== base.progressiveSlopeFactor) changedParams.push('Progressivite');
+  if (scenario.tpOffpeakDiscountPct !== base.tpOffpeakDiscountPct) changedParams.push('Rabais TP');
+  if (scenario.enableCovoiturage) changedParams.push('Covoiturage');
+  if (scenario.enableTAD) changedParams.push('TAD');
+  if (scenario.enableTaxiBons) changedParams.push('Taxi-bons');
+
+  const totalCentreCapacity = 562 + 658 + 204;
+  const revEstimate = scenario.centrePeakPriceCHFh === 0
+    ? 0
+    : Math.round(totalCentreCapacity * 4.5 * Math.max(0, 2.5 - 1) * scenario.centrePeakPriceCHFh);
+
+  return (
+    <div style={{ fontFamily: "'DM Sans','Inter',sans-serif", background: '#f8fafc', minHeight: '100%', paddingBottom: 40 }}>
+
+      {/* Header */}
+      <div style={{ background: 'white', borderBottom: '1px solid #e5e7eb', padding: '14px 28px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 30 }}>
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 900, color: '#111827' }}>
+            Constructeur de scenario -- Sion Mobility
           </div>
-
-          {/* Mesures complémentaires */}
-          <div className="card p-6 animate-fade-up animate-fade-up-delay-3">
-            <h2 className="font-semibold text-ink text-sm mb-1">🛠 Mesures complémentaires</h2>
-            <p className="text-xs text-ink-400 mb-4">Activer des alternatives à la voiture individuelle</p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <ToggleField
-                label="Covoiturage"
-                description="Stimuler l'offre de covoiturage Sion-Région"
-                value={scenario.enableCovoiturage}
-                onChange={v => updateScenario({ enableCovoiturage: v })}
-                icon="🚗"
-              />
-              <ToggleField
-                label="TAD Valais"
-                description="Taxibus inter-zones · CHF 2.50 + 0.35/km"
-                value={scenario.enableTAD}
-                onChange={v => updateScenario({ enableTAD: v })}
-                icon="🚕"
-              />
-              <ToggleField
-                label="Taxibons"
-                description="Subvention taxi (CHF 8.—/bon) · seniors, mobilité réduite"
-                value={scenario.enableTaxiBons}
-                onChange={v => updateScenario({ enableTaxiBons: v })}
-                icon="🎫"
-              />
-            </div>
-          </div>
-
-          {/* Objectif */}
-          <div className="card p-6 animate-fade-up animate-fade-up-delay-3">
-            <h2 className="font-semibold text-ink text-sm mb-1">🎯 Objectif principal</h2>
-            <p className="text-xs text-ink-400 mb-4">Oriente l'interprétation des résultats et les recommandations IA</p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {OBJECTIVES.map(obj => (
-                <button
-                  key={obj.value}
-                  onClick={() => updateScenario({ objective: obj.value as Scenario['objective'] })}
-                  className={`text-left p-4 rounded-xl border transition-all ${
-                    scenario.objective === obj.value
-                      ? 'border-accent bg-accent-50'
-                      : 'border-ink-200 hover:border-accent-300 hover:bg-accent-50'
-                  }`}
-                >
-                  <div className="text-xl mb-2">{obj.icon}</div>
-                  <div className={`text-xs font-semibold ${scenario.objective === obj.value ? 'text-accent' : 'text-ink'}`}>
-                    {obj.label}
-                  </div>
-                  <div className="text-xs text-ink-400 mt-1 leading-tight">{obj.description}</div>
-                </button>
-              ))}
-            </div>
+          <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>
+            {changedParams.length > 0
+              ? 'Modifications : ' + changedParams.join(' · ')
+              : 'Situation actuelle (aucune modification)'}
           </div>
         </div>
-
-        {/* Right: Summary + Reference data */}
-        <div className="space-y-4 animate-fade-up animate-fade-up-delay-2">
-
-          {/* Scenario summary */}
-          <div className="card p-5">
-            <div className="label-sm mb-3">Résumé du scénario</div>
-            <div className="space-y-2 text-xs">
-              <div className="flex justify-between">
-                <span className="text-ink-500">Centre pointe</span>
-                <span className={`font-semibold font-mono ${
-                  deltacentrePeak > 0 ? 'text-red-600' : deltacentrePeak < 0 ? 'text-green-600' : 'text-ink'
-                }`}>
-                  {scenario.centrePeakPriceCHFh.toFixed(2)} CHF/h
-                  {deltacentrePeak !== 0 && (
-                    <span className="ml-1 text-xs">({deltacentrePeak > 0 ? '+' : ''}{deltacentrePeak.toFixed(2)})</span>
-                  )}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-ink-500">Centre creux</span>
-                <span className="font-semibold font-mono text-ink">{scenario.centreOffpeakPriceCHFh.toFixed(2)} CHF/h</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-ink-500">Différentiel pointe/creux</span>
-                <span className={`font-semibold font-mono ${ratePeakOffpeak > 1.2 ? 'text-green-600' : 'text-ink-400'}`}>
-                  ×{ratePeakOffpeak.toFixed(1)}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-ink-500">P+R pointe</span>
-                <span className={`font-semibold font-mono ${scenario.peripheriePeakPriceCHFh > 0 ? 'text-orange-600' : 'text-green-600'}`}>
-                  {scenario.peripheriePeakPriceCHFh === 0 ? 'GRATUIT' : `${scenario.peripheriePeakPriceCHFh.toFixed(2)} CHF/h`}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-ink-500">Rabais TP creux</span>
-                <span className={`font-semibold font-mono ${scenario.tpOffpeakDiscountPct > 0 ? 'text-green-600' : 'text-ink-400'}`}>
-                  {scenario.tpOffpeakDiscountPct}%
-                </span>
-              </div>
-              {scenario.progressiveSlopeFactor > 1.0 && (
-                <div className="flex justify-between">
-                  <span className="text-ink-500">Progressivité</span>
-                  <span className="font-semibold font-mono text-orange-600">×{scenario.progressiveSlopeFactor.toFixed(1)}</span>
-                </div>
-              )}
-              {/* Example cost for a 3.5h pendulaire */}
-              <div className="mt-3 pt-3 border-t border-ink-100">
-                <div className="text-ink-400 mb-1">Coût exemple — pendulaire 3.5h centre :</div>
-                <div className="font-semibold text-ink">
-                  CHF {Math.max(0, (3.5 - 1) * scenario.centrePeakPriceCHFh * Math.max(1, scenario.progressiveSlopeFactor)).toFixed(2)}
-                  <span className="text-xs font-normal text-ink-400 ml-1">(1h gratuite incluse)</span>
-                </div>
-                <div className="text-xs text-ink-400 mt-0.5">
-                  Actuel : CHF 7.50 · P+R + BS11 : CHF 4.20 (zone 3)
-                </div>
-              </div>
-              <div className="flex gap-1 flex-wrap mt-1">
-                {scenario.enableCovoiturage && <span className="px-2 py-0.5 rounded-full bg-green-50 text-green-700 border border-green-200 text-xs">covoiturage</span>}
-                {scenario.enableTAD         && <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 text-xs">TAD</span>}
-                {scenario.enableTaxiBons    && <span className="px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200 text-xs">taxibons</span>}
-              </div>
-            </div>
-          </div>
-
-          {/* Reference parking */}
-          <div className="card p-5">
-            <div className="label-sm mb-3">📍 Tarifs parkings Sion (officiels)</div>
-            <div className="space-y-3">
-              {REFERENCE.parking.map(p => (
-                <div key={p.name} className="text-xs">
-                  <div className="flex justify-between items-start gap-1">
-                    <span className="text-ink font-medium leading-tight">{p.name}</span>
-                    <span className={`font-semibold flex-shrink-0 ml-2 ${p.price === 'GRATUIT' ? 'text-green-600' : 'text-ink'}`}>
-                      {p.price}
-                    </span>
-                  </div>
-                  <div className="text-ink-400 mt-0.5">{p.detail}</div>
-                  <div className={`mt-0.5 text-xs ${p.confidence.startsWith('✓') ? 'text-green-600' : 'text-amber-600'}`}>
-                    {p.confidence} · {p.source}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Reference TP */}
-          <div className="card p-5">
-            <div className="label-sm mb-3">🚌 TP Sion (isireso 2025)</div>
-            <div className="space-y-3">
-              {REFERENCE.tp.map(t => (
-                <div key={t.name} className="text-xs">
-                  <div className="flex justify-between items-start gap-1">
-                    <span className="font-medium text-ink leading-tight">{t.name}</span>
-                    <span className="font-mono text-ink flex-shrink-0 ml-2">{t.price}</span>
-                  </div>
-                  <div className="text-ink-400">{t.freq}</div>
-                  <div className="text-ink-300 mt-0.5 italic">{t.detail}</div>
-                </div>
-              ))}
-            </div>
-            <div className="mt-3 text-xs text-ink-300">Source : isireso-sion.ch · CarPostal · sion.ch/mobilite</div>
-          </div>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button
+            onClick={() => setScenario({ ...base })}
+            style={{ padding: '8px 16px', borderRadius: 8, border: '1.5px solid #e5e7eb', background: 'white', fontSize: 12, fontWeight: 600, color: '#6b7280', cursor: 'pointer' }}
+          >
+            Reinitialiser
+          </button>
+          <button
+            onClick={async () => { await runSimulation(); navigate('/resultats'); }}
+            disabled={isSimulating}
+            style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: isSimulating ? '#e5e7eb' : '#2563eb', color: 'white', fontSize: 13, fontWeight: 800, cursor: isSimulating ? 'not-allowed' : 'pointer' }}
+          >
+            {isSimulating ? 'Simulation...' : 'Simuler ce scenario'}
+          </button>
         </div>
       </div>
 
-      {/* Run button */}
-      <div className="mt-8 flex items-center justify-between animate-fade-up animate-fade-up-delay-4">
-        <div className="text-xs text-ink-400">
-          Simulation sur 8 zones · 12 personas · moteur déterministe
-          <span className="ml-2 text-ink-300">· baseline = situation actuelle Sion</span>
+      <div style={{ maxWidth: 1280, margin: '0 auto', padding: '24px 24px 0' }}>
+
+        {/* Scenarios predéfinis */}
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ fontSize: 10, fontWeight: 800, color: '#9ca3af', textTransform: 'uppercase' as const, letterSpacing: '.07em', marginBottom: 10 }}>
+            Scenarios predéfinis -- cliquer pour charger
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+            {PRESETS.map(p => {
+              const active = Math.abs((scenario.centrePeakPriceCHFh) - (p.patch.centrePeakPriceCHFh ?? 0)) < 0.01;
+              return (
+                <button
+                  key={p.name}
+                  onClick={() => setScenario({ ...base, name: p.name, ...p.patch })}
+                  style={{ padding: '10px 14px', borderRadius: 10, border: '1.5px solid', textAlign: 'left' as const, cursor: 'pointer', transition: 'all .15s', borderColor: active ? '#2563eb' : '#e5e7eb', background: active ? '#eff6ff' : 'white' }}
+                >
+                  <div style={{ fontSize: 16, marginBottom: 4 }}>{p.emoji}</div>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: active ? '#1e40af' : '#111827', marginBottom: 3 }}>{p.name}</div>
+                  <div style={{ fontSize: 9, color: '#9ca3af', lineHeight: 1.4 }}>{p.desc}</div>
+                </button>
+              );
+            })}
+          </div>
         </div>
-        <button
-          onClick={handleSimulate}
-          disabled={isSimulating}
-          className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {isSimulating ? (
-            <>
-              <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              Simulation en cours…
-            </>
-          ) : (
-            <>▷ Lancer la simulation</>
-          )}
-        </button>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 20 }}>
+
+          {/* GAUCHE : Reference + Leviers */}
+          <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 16 }}>
+
+            {/* Section leviers */}
+            <div style={{ background: 'white', borderRadius: 14, border: '1px solid #e5e7eb', padding: '18px 20px' }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: '#111827', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ width: 10, height: 10, borderRadius: 3, background: '#2563eb' }} />
+                Leviers de tarification (actionables par la Ville)
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+                {/* Parking centre */}
+                <div>
+                  <div style={{ fontSize: 10, fontWeight: 800, color: '#1e40af', textTransform: 'uppercase' as const, letterSpacing: '.07em', marginBottom: 12, padding: '4px 8px', background: '#eff6ff', borderRadius: 6, display: 'inline-block' }}>
+                    Parking centre-ville (1 424 pl.)
+                  </div>
+                  <Slider
+                    label="Tarif horaire (apres 1h gratuite)"
+                    value={scenario.centrePeakPriceCHFh ?? 3.0}
+                    min={0} max={8} step={0.5}
+                    baseline={base.centrePeakPriceCHFh}
+                    onChange={v => updateScenario({ centrePeakPriceCHFh: v, centreOffpeakPriceCHFh: v })}
+                    unit="CHF"
+                    note="Planta · Scex · Cible"
+                  />
+                  <Slider
+                    label="Progressivite longue duree (>1h)"
+                    value={scenario.progressiveSlopeFactor ?? 1.0}
+                    min={1.0} max={3.0} step={0.1}
+                    baseline={base.progressiveSlopeFactor}
+                    onChange={v => updateScenario({ progressiveSlopeFactor: v })}
+                    unit="x"
+                    note="Majoration apres 2h"
+                  />
+                  <div style={{ fontSize: 9, color: '#93c5fd', background: '#eff6ff', padding: '5px 8px', borderRadius: 6, lineHeight: 1.5 }}>
+                    Gratuites maintenues : 12h-13h30, ven.17h-sam.24h, nuits, dimanches
+                  </div>
+                </div>
+
+                {/* P+R et TP */}
+                <div>
+                  <div style={{ fontSize: 10, fontWeight: 800, color: '#166534', textTransform: 'uppercase' as const, letterSpacing: '.07em', marginBottom: 12, padding: '4px 8px', background: '#f0fdf4', borderRadius: 6, display: 'inline-block' }}>
+                    P+R + Transports publics
+                  </div>
+                  <Slider
+                    label="Tarif P+R Potences + Stade (910 pl.)"
+                    value={scenario.peripheriePeakPriceCHFh ?? 0}
+                    min={0} max={4} step={0.25}
+                    baseline={base.peripheriePeakPriceCHFh}
+                    onChange={v => updateScenario({ peripheriePeakPriceCHFh: v, peripherieOffpeakPriceCHFh: v })}
+                    unit="CHF"
+                    note="Baseline = gratuit"
+                  />
+                  <Slider
+                    label="Rabais TP hors-pointe (%)"
+                    value={scenario.tpOffpeakDiscountPct ?? 0}
+                    min={0} max={50} step={5}
+                    baseline={base.tpOffpeakDiscountPct}
+                    onChange={v => updateScenario({ tpOffpeakDiscountPct: v })}
+                    unit="%"
+                    note="Applique hors 7h-9h, 16h-18h"
+                  />
+                </div>
+              </div>
+
+              {/* Mesures complementaires */}
+              <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: 14, marginTop: 4 }}>
+                <div style={{ fontSize: 10, fontWeight: 800, color: '#9ca3af', textTransform: 'uppercase' as const, letterSpacing: '.07em', marginBottom: 10 }}>
+                  Mesures complementaires
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                  <Toggle
+                    label="Covoiturage"
+                    desc="Reduction covoitureurs"
+                    value={scenario.enableCovoiturage ?? false}
+                    onChange={v => updateScenario({ enableCovoiturage: v })}
+                  />
+                  <Toggle
+                    label="TAD Valais"
+                    desc="Transport a la demande"
+                    value={scenario.enableTAD ?? false}
+                    onChange={v => updateScenario({ enableTAD: v })}
+                  />
+                  <Toggle
+                    label="Taxi-bons"
+                    desc="Bons pour seniors"
+                    value={scenario.enableTaxiBons ?? false}
+                    onChange={v => updateScenario({ enableTaxiBons: v })}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Tableau des parkings */}
+            <div style={{ background: 'white', borderRadius: 14, border: '1px solid #e5e7eb', padding: '18px 20px' }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: '#111827', marginBottom: 6 }}>
+                Reference officielle -- Offre de stationnement Sion 2025
+              </div>
+              <div style={{ fontSize: 10, color: '#9ca3af', marginBottom: 14 }}>
+                Sources : sion.ch stationnement · PDF tarifs 2024-2025 · doc. horodateurs 03.2025
+              </div>
+              <div style={{ overflowX: 'auto' as const }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                  <thead>
+                    <tr style={{ borderBottom: '2px solid #f1f5f9' }}>
+                      {['Parking', 'Zone', 'Places', 'Tarif pointe', 'Gratuites / notes', 'Source'].map(h => (
+                        <th key={h} style={{ padding: '6px 8px', textAlign: 'left' as const, fontSize: 9, fontWeight: 800, color: '#9ca3af', textTransform: 'uppercase' as const, letterSpacing: '.05em', whiteSpace: 'nowrap' as const }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {PARKING_TABLE.map((p, i) => (
+                      <tr key={p.name} style={{ borderBottom: '1px solid #f8fafc', background: i % 2 === 0 ? 'white' : '#fafafa' }}>
+                        <td style={{ padding: '7px 8px', fontWeight: 700, color: '#111827' }}>
+                          {p.name}
+                          {p.lever && <span style={{ marginLeft: 5, fontSize: 8, background: '#eff6ff', color: '#2563eb', padding: '1px 5px', borderRadius: 4, fontWeight: 700 }}>LEVIER</span>}
+                        </td>
+                        <td style={{ padding: '7px 8px', color: '#6b7280' }}>{p.zone}</td>
+                        <td style={{ padding: '7px 8px', fontWeight: 700, color: '#374151', textAlign: 'right' as const }}>{p.places}</td>
+                        <td style={{ padding: '7px 8px', color: p.pricePeak === 'GRATUIT' ? '#16a34a' : '#111827', fontWeight: 700 }}>{p.pricePeak}</td>
+                        <td style={{ padding: '7px 8px', color: '#9ca3af', maxWidth: 220, overflow: 'hidden' as const }}>{p.freeRules}</td>
+                        <td style={{ padding: '7px 8px' }}>
+                          <span style={{ fontSize: 9, background: p.confidence === 'Officiel' ? '#f0fdf4' : '#fffbeb', color: p.confidence === 'Officiel' ? '#15803d' : '#92400e', padding: '2px 6px', borderRadius: 4, fontWeight: 700 }}>
+                            {p.confidence}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ borderTop: '2px solid #f1f5f9' }}>
+                      <td style={{ padding: '7px 8px', fontWeight: 800, color: '#111827' }}>TOTAL PUBLIC</td>
+                      <td />
+                      <td style={{ padding: '7px 8px', fontWeight: 900, color: '#2563eb', textAlign: 'right' as const }}>
+                        {PARKING_TABLE.filter(p => p.type !== 'Surface' || p.name.includes('P+R')).reduce((s, p) => s + p.places, 0).toLocaleString('fr-CH')}
+                      </td>
+                      <td colSpan={3} />
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+
+              {/* Zones horodateurs */}
+              <div style={{ marginTop: 18, borderTop: '1px solid #f1f5f9', paddingTop: 14 }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: '#374151', marginBottom: 10 }}>
+                  Zones horodateurs (voirie) -- Source sion.ch 03.2025
+                </div>
+                <div style={{ overflowX: 'auto' as const }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10 }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        {['Zone', 'Localisation', 'Tarif', 'Duree max', 'Periodes gratuites'].map(h => (
+                          <th key={h} style={{ padding: '5px 8px', textAlign: 'left' as const, fontSize: 8, fontWeight: 800, color: '#9ca3af', textTransform: 'uppercase' as const }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {HORODATEUR_ZONES.map((z, i) => (
+                        <tr key={z.zone} style={{ borderBottom: '1px solid #f8fafc', background: i % 2 === 0 ? 'white' : '#fafafa' }}>
+                          <td style={{ padding: '5px 8px', fontWeight: 700, color: '#2563eb' }}>{z.zone}</td>
+                          <td style={{ padding: '5px 8px', color: '#374151' }}>{z.label}</td>
+                          <td style={{ padding: '5px 8px', fontWeight: 700, color: '#111827' }}>{z.tarif}</td>
+                          <td style={{ padding: '5px 8px', color: '#6b7280' }}>{z.durMax}</td>
+                          <td style={{ padding: '5px 8px', color: '#9ca3af', fontSize: 9 }}>{z.gratuit}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* DROITE : Synthese scenario */}
+          <div>
+            <div style={{ background: 'white', borderRadius: 14, border: '1px solid #e5e7eb', padding: '18px 20px', position: 'sticky', top: 76 }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: '#111827', marginBottom: 16 }}>
+                Synthese du scenario
+              </div>
+
+              {/* Nom */}
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 9, fontWeight: 800, color: '#9ca3af', textTransform: 'uppercase' as const, letterSpacing: '.07em', marginBottom: 5 }}>Nom du scenario</div>
+                <input
+                  value={scenario.name ?? ''}
+                  onChange={e => updateScenario({ name: e.target.value })}
+                  placeholder="Ex: Tarification pointe 2026"
+                  style={{ width: '100%', padding: '7px 10px', borderRadius: 7, fontSize: 12, border: '1.5px solid #e5e7eb', background: '#f9fafb', color: '#374151', outline: 'none', boxSizing: 'border-box' as const }}
+                />
+              </div>
+
+              {/* Objectif */}
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 9, fontWeight: 800, color: '#9ca3af', textTransform: 'uppercase' as const, letterSpacing: '.07em', marginBottom: 8 }}>Objectif politique prioritaire</div>
+                {[
+                  { v: 'reduce-peak-car',    l: 'Reduire voiture en pointe',    i: '🚗', d: 'Maximiser le report modal en heure de pointe' },
+                  { v: 'protect-short-stay', l: 'Proteger commerces / courte duree', i: '🛍', d: 'Favoriser visites courtes, decourager pendulaires' },
+                  { v: 'equity-access',      l: 'Equite et accessibilite',       i: '⚖', d: 'Limiter l\'impact sur les faibles revenus' },
+                  { v: 'revenue',            l: 'Optimiser les recettes',        i: '💰', d: 'Maximiser les recettes de stationnement' },
+                ].map(obj => (
+                  <button
+                    key={obj.v}
+                    onClick={() => updateScenario({ objective: obj.v })}
+                    style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 8, border: '1.5px solid', marginBottom: 5, cursor: 'pointer', textAlign: 'left' as const, transition: 'all .1s', borderColor: scenario.objective === obj.v ? '#2563eb' : '#e5e7eb', background: scenario.objective === obj.v ? '#eff6ff' : 'white' }}
+                  >
+                    <span style={{ fontSize: 16 }}>{obj.i}</span>
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: scenario.objective === obj.v ? '#1e40af' : '#374151' }}>{obj.l}</div>
+                      <div style={{ fontSize: 9, color: '#9ca3af' }}>{obj.d}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              {/* Apercu chiffre */}
+              <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: 14 }}>
+                <div style={{ fontSize: 9, fontWeight: 800, color: '#9ca3af', textTransform: 'uppercase' as const, letterSpacing: '.07em', marginBottom: 10 }}>
+                  Apercu recettes centre (estimation)
+                </div>
+                <div style={{ background: '#f8fafc', borderRadius: 8, padding: '10px 12px', marginBottom: 8 }}>
+                  <div style={{ fontSize: 22, fontWeight: 900, color: scenario.centrePeakPriceCHFh === 0 ? '#16a34a' : '#d97706' }}>
+                    CHF {revEstimate.toLocaleString('fr-CH')}
+                  </div>
+                  <div style={{ fontSize: 9, color: '#9ca3af', marginTop: 2 }}>par jour (1 424 pl. x 4.5 rotations x 1.5h facturable)</div>
+                  <div style={{ fontSize: 9, color: '#9ca3af' }}>
+                    ~ CHF {(revEstimate * 250).toLocaleString('fr-CH')} / an (250 jours ouvrables)
+                  </div>
+                </div>
+                <div style={{ fontSize: 9, color: '#fbbf24', background: '#fffbeb', padding: '5px 8px', borderRadius: 6, border: '1px solid #fde68a' }}>
+                  Estimation simplifiee, ne tient pas compte des gratuites et abonnements
+                </div>
+              </div>
+
+              {/* Recap modifications */}
+              {changedParams.length > 0 && (
+                <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: 12, marginTop: 12 }}>
+                  <div style={{ fontSize: 9, fontWeight: 800, color: '#9ca3af', textTransform: 'uppercase' as const, letterSpacing: '.07em', marginBottom: 8 }}>
+                    Modifications vs baseline
+                  </div>
+                  {[
+                    { label: 'Centre', base: base.centrePeakPriceCHFh + ' CHF/h', now: scenario.centrePeakPriceCHFh === 0 ? 'GRATUIT' : scenario.centrePeakPriceCHFh + ' CHF/h', changed: scenario.centrePeakPriceCHFh !== base.centrePeakPriceCHFh },
+                    { label: 'P+R', base: base.peripheriePeakPriceCHFh === 0 ? 'GRATUIT' : base.peripheriePeakPriceCHFh + ' CHF/h', now: scenario.peripheriePeakPriceCHFh === 0 ? 'GRATUIT' : scenario.peripheriePeakPriceCHFh + ' CHF/h', changed: scenario.peripheriePeakPriceCHFh !== base.peripheriePeakPriceCHFh },
+                    { label: 'Progressivite', base: base.progressiveSlopeFactor + 'x', now: scenario.progressiveSlopeFactor + 'x', changed: scenario.progressiveSlopeFactor !== base.progressiveSlopeFactor },
+                    { label: 'Rabais TP', base: base.tpOffpeakDiscountPct + '%', now: (scenario.tpOffpeakDiscountPct ?? 0) + '%', changed: scenario.tpOffpeakDiscountPct !== base.tpOffpeakDiscountPct },
+                  ].filter(item => item.changed).map(item => (
+                    <div key={item.label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#374151', marginBottom: 4 }}>
+                      <span style={{ color: '#6b7280' }}>{item.label}</span>
+                      <span>
+                        <span style={{ color: '#9ca3af', textDecoration: 'line-through', marginRight: 6 }}>{item.base}</span>
+                        <strong style={{ color: '#111827' }}>{item.now}</strong>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <button
+                onClick={async () => { await runSimulation(); navigate('/resultats'); }}
+                disabled={isSimulating}
+                style={{ width: '100%', marginTop: 16, padding: '13px 0', borderRadius: 10, border: 'none', background: isSimulating ? '#e5e7eb' : '#2563eb', color: 'white', fontSize: 14, fontWeight: 900, cursor: isSimulating ? 'not-allowed' : 'pointer' }}
+              >
+                {isSimulating ? 'Simulation en cours...' : 'Simuler ce scenario'}
+              </button>
+
+              <div style={{ fontSize: 9, color: '#9ca3af', textAlign: 'center' as const, marginTop: 8, lineHeight: 1.5 }}>
+                Modele logit RUM T=1.5 · ARE Microrecensement 2015 · Calibration terrain recommandee
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
