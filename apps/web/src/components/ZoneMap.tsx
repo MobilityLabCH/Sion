@@ -1,30 +1,29 @@
 /**
- * ZoneMap.tsx — Carte parkings & zones · Sion Mobility
- * VERSION DÉFINITIVE
- *
+ * ZoneMap.tsx - Carte interactive parkings et zones Sion
+ * VERSION COMPLETE : clic parking pour modifier prix, zones reelles
  * Chemin : apps/web/src/components/ZoneMap.tsx
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import maplibregl from 'maplibre-gl';
-import type { ZoneResult, Scenario } from '../types';
+import 'maplibre-gl/dist/maplibre-gl.css';
+import type { ZoneResult } from '../types';
+import type { Scenario } from '../types';
 
 interface ZoneMapProps {
   zoneResults?: ZoneResult[];
   height?: string;
   className?: string;
   scenario?: Scenario;
-  dayType?: string;
+  onParkingPriceChange?: (parkingId: string, newPrice: number) => void;
 }
 
-// ─── Zones réelles de Sion ────────────────────────────────────────────────────
+// ─── Zones de Sion (polygones ajustes sur geographie reelle) ─────────────────
 
 const ZONES = [
   {
-    id: 'centre',
-    label: 'Centre-ville',
-    description: 'Noyau historique · Planta + Scex + Cible · 1424 places',
-    color: '#ef4444',
+    id: 'centre', label: 'Centre-ville', color: '#ef4444',
+    description: 'Noyau historique -- Planta + Scex + Cible -- 1424 places',
     coords: [[
       [7.3520, 46.2300], [7.3530, 46.2285], [7.3560, 46.2275],
       [7.3630, 46.2278], [7.3680, 46.2285], [7.3690, 46.2305],
@@ -34,10 +33,8 @@ const ZONES = [
     ]],
   },
   {
-    id: 'gare',
-    label: 'Gare CFF',
-    description: 'Pôle multimodal · Parking Gare ~300 pl.',
-    color: '#f97316',
+    id: 'gare', label: 'Gare CFF', color: '#f97316',
+    description: 'Pole multimodal -- Parking Gare ~300 pl.',
     coords: [[
       [7.3480, 46.2255], [7.3520, 46.2250], [7.3570, 46.2255],
       [7.3590, 46.2270], [7.3570, 46.2285], [7.3520, 46.2290],
@@ -45,10 +42,8 @@ const ZONES = [
     ]],
   },
   {
-    id: 'nord',
-    label: 'Quartiers Nord',
-    description: 'Parking Nord 282 pl. · Zone résidentielle',
-    color: '#3b82f6',
+    id: 'nord', label: 'Quartiers Nord', color: '#3b82f6',
+    description: 'Parking Nord 282 pl. -- Zone residentielle',
     coords: [[
       [7.3520, 46.2365], [7.3600, 46.2365], [7.3680, 46.2360],
       [7.3720, 46.2380], [7.3700, 46.2430], [7.3640, 46.2450],
@@ -57,10 +52,8 @@ const ZONES = [
     ]],
   },
   {
-    id: 'est',
-    label: 'Sion-Est',
-    description: 'Roches-Brunes 300 pl. · Zone résidentielle Est',
-    color: '#eab308',
+    id: 'est', label: 'Sion-Est', color: '#eab308',
+    description: 'Roches-Brunes 300 pl. -- Zone residentielle Est',
     coords: [[
       [7.3690, 46.2285], [7.3750, 46.2280], [7.3820, 46.2285],
       [7.3860, 46.2310], [7.3840, 46.2360], [7.3780, 46.2380],
@@ -69,10 +62,8 @@ const ZONES = [
     ]],
   },
   {
-    id: 'emploi',
-    label: 'Zone Industrielle',
-    description: 'Ronquoz · CERM · HES-SO · ~1200 pl. privées gratuites',
-    color: '#ec4899',
+    id: 'emploi', label: 'Zone Industrielle', color: '#ec4899',
+    description: 'Ronquoz -- CERM -- HES-SO -- ~1200 pl. privees gratuites',
     coords: [[
       [7.3280, 46.2170], [7.3380, 46.2165], [7.3500, 46.2170],
       [7.3530, 46.2195], [7.3520, 46.2225], [7.3460, 46.2240],
@@ -81,10 +72,8 @@ const ZONES = [
     ]],
   },
   {
-    id: 'peripherie',
-    label: 'P+R Périphérie',
-    description: 'P+R Potences 450 pl. + P+R Stade 460 pl. — gratuits, BS11',
-    color: '#14b8a6',
+    id: 'peripherie', label: 'P+R Peripherie', color: '#14b8a6',
+    description: 'P+R Potences 450 pl. + P+R Stade 460 pl. -- gratuits BS11',
     coords: [[
       [7.3180, 46.2200], [7.3330, 46.2200], [7.3340, 46.2260],
       [7.3320, 46.2300], [7.3290, 46.2320], [7.3200, 46.2310],
@@ -93,80 +82,90 @@ const ZONES = [
   },
 ] as const;
 
-// ─── Parkings officiels Sion ──────────────────────────────────────────────────
+// ─── Parkings avec coordonnees GPS precises ───────────────────────────────────
 
 type ParkingType = 'centre' | 'gare' | 'pericentre' | 'pr';
 
-interface Parking {
+interface ParkingDef {
   id: string;
   name: string;
   shortName: string;
   coords: [number, number];
   capacity: number;
-  priceCHFh: number;
+  basePriceCHFh: number;
   priceNote: string;
   freeNote: string;
   walkMin: number;
   type: ParkingType;
+  editable: boolean;
+  maxOccupancyPct: number;
   source: string;
 }
 
-const PARKINGS: Parking[] = [
+const PARKINGS: ParkingDef[] = [
   {
     id: 'planta', name: 'Parking de la Planta', shortName: 'Planta',
-    coords: [7.3598, 46.2325], capacity: 562, priceCHFh: 3.0,
-    priceNote: '1ère heure gratuite · CHF 3/h dès h2',
-    freeNote: 'Gratuit ven. 17h → sam. 24h',
-    walkMin: 3, type: 'centre', source: 'sion.ch PDF 15.07.2024',
+    coords: [7.3598, 46.2325], capacity: 562, basePriceCHFh: 3.0,
+    priceNote: '1h gratuite -- CHF 3/h apres',
+    freeNote: 'Gratuit ven.17h - sam.24h',
+    walkMin: 3, type: 'centre', editable: true, maxOccupancyPct: 82,
+    source: 'sion.ch PDF 15.07.2024',
   },
   {
     id: 'scex', name: 'Parking du Scex', shortName: 'Scex',
-    coords: [7.3628, 46.2298], capacity: 658, priceCHFh: 3.0,
-    priceNote: '1ère heure gratuite · CHF 3/h dès h2',
-    freeNote: 'Gratuit ven. 17h → sam. 24h',
-    walkMin: 4, type: 'centre', source: 'sion.ch PDF 11.08.2025',
+    coords: [7.3628, 46.2298], capacity: 658, basePriceCHFh: 3.0,
+    priceNote: '1h gratuite -- CHF 3/h apres',
+    freeNote: 'Gratuit ven.17h - sam.24h',
+    walkMin: 4, type: 'centre', editable: true, maxOccupancyPct: 88,
+    source: 'sion.ch PDF 11.08.2025',
   },
   {
     id: 'cible', name: 'Parking de la Cible', shortName: 'Cible',
-    coords: [7.3562, 46.2342], capacity: 204, priceCHFh: 3.0,
-    priceNote: '~CHF 3/h (estimé par analogie)',
-    freeNote: 'Gratuit ven. 17h → sam. 24h (présumé)',
-    walkMin: 5, type: 'centre', source: 'sion.ch estimé · conf. 0.70',
+    coords: [7.3562, 46.2342], capacity: 204, basePriceCHFh: 3.0,
+    priceNote: '~CHF 3/h (estime)',
+    freeNote: 'Gratuit ven.17h - sam.24h (presume)',
+    walkMin: 5, type: 'centre', editable: true, maxOccupancyPct: 75,
+    source: 'sion.ch estime conf.0.70',
   },
   {
-    id: 'gare', name: 'Parking Gare CFF', shortName: 'Gare',
-    coords: [7.3521, 46.2278], capacity: 300, priceCHFh: 2.0,
-    priceNote: '~CHF 2/h (tarif estimé)',
-    freeNote: 'Gratuit samedi (présumé)',
-    walkMin: 10, type: 'gare', source: 'CFF · sion.ch estimé',
+    id: 'gare', name: 'Parking Gare CFF', shortName: 'Gare CFF',
+    coords: [7.3521, 46.2278], capacity: 300, basePriceCHFh: 2.0,
+    priceNote: '~CHF 2/h (estime)',
+    freeNote: 'Gratuit samedi (presume)',
+    walkMin: 10, type: 'gare', editable: false, maxOccupancyPct: 70,
+    source: 'CFF -- sion.ch estime',
   },
   {
     id: 'nord', name: 'Parking Nord', shortName: 'Nord',
-    coords: [7.3572, 46.2420], capacity: 282, priceCHFh: 1.5,
-    priceNote: '~CHF 1.50/h (tarif préférentiel estimé)',
-    freeNote: '', walkMin: 15, type: 'pericentre',
-    source: 'sion.ch carte mobilité · conf. 0.60',
+    coords: [7.3572, 46.2420], capacity: 282, basePriceCHFh: 1.5,
+    priceNote: '~CHF 1.50/h (estime)',
+    freeNote: '',
+    walkMin: 15, type: 'pericentre', editable: false, maxOccupancyPct: 60,
+    source: 'sion.ch carte mobilite conf.0.60',
   },
   {
     id: 'roches', name: 'Parking Roches-Brunes', shortName: 'Roches',
-    coords: [7.3745, 46.2318], capacity: 300, priceCHFh: 1.5,
-    priceNote: '~CHF 1.50/h (tarif préférentiel estimé)',
-    freeNote: '', walkMin: 20, type: 'pericentre',
-    source: 'sion.ch carte mobilité · conf. 0.60',
+    coords: [7.3745, 46.2318], capacity: 300, basePriceCHFh: 1.5,
+    priceNote: '~CHF 1.50/h (estime)',
+    freeNote: '',
+    walkMin: 20, type: 'pericentre', editable: false, maxOccupancyPct: 55,
+    source: 'sion.ch carte mobilite conf.0.60',
   },
   {
     id: 'pr-potences', name: 'P+R Potences', shortName: 'P+R Potences',
-    coords: [7.3240, 46.2268], capacity: 450, priceCHFh: 0,
+    coords: [7.3240, 46.2268], capacity: 450, basePriceCHFh: 0,
     priceNote: 'GRATUIT',
-    freeNote: 'BS 11 → centre toutes les 10 min',
-    walkMin: 0, type: 'pr', source: 'sion.ch · CarPostal 2025 · conf. 0.95',
+    freeNote: 'BS 11 toutes les 10 min',
+    walkMin: 0, type: 'pr', editable: true, maxOccupancyPct: 35,
+    source: 'sion.ch -- CarPostal 2025',
   },
   {
-    id: 'pr-stade', name: 'P+R Stade / Échutes', shortName: 'P+R Stade',
-    coords: [7.3840, 46.2330], capacity: 460, priceCHFh: 0,
+    id: 'pr-stade', name: 'P+R Stade / Echutes', shortName: 'P+R Stade',
+    coords: [7.3840, 46.2330], capacity: 460, basePriceCHFh: 0,
     priceNote: 'GRATUIT',
-    freeNote: 'BS 11 → centre toutes les 10 min',
-    walkMin: 0, type: 'pr', source: 'sion.ch · CarPostal 2025 · conf. 0.95',
+    freeNote: 'BS 11 toutes les 10 min',
+    walkMin: 0, type: 'pr', editable: true, maxOccupancyPct: 28,
+    source: 'sion.ch -- CarPostal 2025',
   },
 ];
 
@@ -177,49 +176,123 @@ const MARKER_BG: Record<ParkingType, string> = {
   pr:         '#16a34a',
 };
 
-// ─── Composant ────────────────────────────────────────────────────────────────
+// ─── Panel edition parking ────────────────────────────────────────────────────
+
+function ParkingEditPanel({ pk, scenarioPrice, onClose, onApply }: {
+  pk: ParkingDef;
+  scenarioPrice: number;
+  onClose: () => void;
+  onApply: (price: number) => void;
+}) {
+  const [price, setPrice] = useState(scenarioPrice);
+  const col = MARKER_BG[pk.type];
+  const occ = Math.max(0, pk.maxOccupancyPct - Math.round((price - pk.basePriceCHFh) * 8));
+
+  return (
+    <div style={{ position: 'absolute', top: 60, right: 12, zIndex: 20, width: 270, background: 'white', borderRadius: 14, boxShadow: '0 8px 32px rgba(0,0,0,.18)', border: '1.5px solid #e5e7eb', fontFamily: "'DM Sans',sans-serif" }}>
+      <div style={{ padding: '12px 14px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ width: 10, height: 10, borderRadius: 3, background: col }} />
+          <span style={{ fontSize: 13, fontWeight: 800, color: '#111827' }}>{pk.name}</span>
+        </div>
+        <button onClick={onClose} style={{ background: '#f1f5f9', border: 'none', cursor: 'pointer', borderRadius: 6, width: 24, height: 24, fontSize: 12, fontWeight: 700, color: '#6b7280' }}>X</button>
+      </div>
+
+      <div style={{ padding: '12px 14px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
+          <div style={{ background: '#f8fafc', borderRadius: 8, padding: '8px', textAlign: 'center' as const }}>
+            <div style={{ fontSize: 22, fontWeight: 900, color: '#111827' }}>{pk.capacity}</div>
+            <div style={{ fontSize: 9, color: '#9ca3af' }}>places totales</div>
+          </div>
+          <div style={{ background: '#f8fafc', borderRadius: 8, padding: '8px', textAlign: 'center' as const }}>
+            <div style={{ fontSize: 22, fontWeight: 900, color: occ > 80 ? '#dc2626' : '#111827' }}>{occ}%</div>
+            <div style={{ fontSize: 9, color: '#9ca3af' }}>occupation estimee</div>
+          </div>
+        </div>
+
+        {pk.editable ? (
+          <>
+            <div style={{ fontSize: 10, fontWeight: 800, color: '#9ca3af', textTransform: 'uppercase' as const, letterSpacing: '.06em', marginBottom: 10 }}>
+              Modifier le tarif
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+              <span style={{ fontSize: 11, color: '#374151' }}>Tarif horaire (h2+)</span>
+              <span style={{ fontSize: 16, fontWeight: 900, color: price === 0 ? '#16a34a' : '#2563eb' }}>
+                {price === 0 ? 'GRATUIT' : 'CHF ' + price.toFixed(1) + '/h'}
+              </span>
+            </div>
+            <input
+              type="range" min={0} max={8} step={0.5} value={price}
+              onChange={e => setPrice(parseFloat(e.target.value))}
+              style={{ width: '100%', accentColor: col, marginBottom: 8 }}
+            />
+            <div style={{ fontSize: 9, color: '#9ca3af', marginBottom: 12 }}>
+              Baseline : CHF {pk.basePriceCHFh.toFixed(1)}/h -- {pk.priceNote}
+            </div>
+            {pk.freeNote ? (
+              <div style={{ fontSize: 10, background: '#f0fdf4', color: '#15803d', padding: '4px 8px', borderRadius: 6, marginBottom: 12 }}>
+                {pk.freeNote}
+              </div>
+            ) : null}
+            <button
+              onClick={() => onApply(price)}
+              style={{ width: '100%', padding: '9px 0', borderRadius: 8, border: 'none', background: col, color: 'white', fontSize: 12, fontWeight: 800, cursor: 'pointer' }}
+            >
+              Appliquer et simuler
+            </button>
+          </>
+        ) : (
+          <>
+            <div style={{ fontSize: 10, background: '#fef3c7', color: '#92400e', padding: '6px 10px', borderRadius: 8, marginBottom: 8 }}>
+              Pas de levier direct -- Tarif gere par {pk.type === 'gare' ? 'CFF' : 'gestionnaire prive'}
+            </div>
+            <div style={{ fontSize: 10, color: '#374151' }}>Tarif actuel : <strong>{pk.priceNote}</strong></div>
+            {pk.walkMin > 0 ? <div style={{ fontSize: 10, color: '#6b7280', marginTop: 4 }}>A pied du centre : {pk.walkMin} min</div> : null}
+          </>
+        )}
+
+        <div style={{ fontSize: 9, color: '#d1d5db', borderTop: '1px solid #f1f5f9', paddingTop: 8, marginTop: 8 }}>
+          Source : {pk.source}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Composant ZoneMap ────────────────────────────────────────────────────────
 
 export default function ZoneMap({
   zoneResults,
   height = '100%',
   className = '',
   scenario,
-  dayType,
+  onParkingPriceChange,
 }: ZoneMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef       = useRef<maplibregl.Map | null>(null);
   const markersRef   = useRef<maplibregl.Marker[]>([]);
   const [mapReady,     setMapReady]     = useState(false);
   const [showParkings, setShowParkings] = useState(true);
+  const [editParking,  setEditParking]  = useState<ParkingDef | null>(null);
 
-  // ── Init carte ─────────────────────────────────────────────────────────────
+  // ── Init carte ──────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
-
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: {
         version: 8,
-        sources: {
-          osm: {
-            type: 'raster',
-            tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-            tileSize: 256,
-            attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-          },
-        },
-        layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
+        sources: { osm: { type: 'raster', tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'], tileSize: 256, attribution: '(c) OpenStreetMap' } },
+        layers:  [{ id: 'osm', type: 'raster', source: 'osm' }],
       },
       center: [7.355, 46.231],
       zoom: 12.8,
       attributionControl: false,
     });
-
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
     map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
     map.on('load', () => setMapReady(true));
     mapRef.current = map;
-
     return () => {
       markersRef.current.forEach(m => m.remove());
       markersRef.current = [];
@@ -228,33 +301,25 @@ export default function ZoneMap({
     };
   }, []);
 
-  // ── Zones ──────────────────────────────────────────────────────────────────
+  // ── Zones ───────────────────────────────────────────────────────────────────
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
 
-    // Nettoyage
     ZONES.forEach(z => {
       ['fill', 'outline', 'label'].forEach(t => {
-        if (map.getLayer(`z-${t}-${z.id}`)) map.removeLayer(`z-${t}-${z.id}`);
+        if (map.getLayer('z-' + t + '-' + z.id)) map.removeLayer('z-' + t + '-' + z.id);
       });
-      if (map.getSource(`z-${z.id}`))     map.removeSource(`z-${z.id}`);
-      if (map.getSource(`z-lbl-${z.id}`)) map.removeSource(`z-lbl-${z.id}`);
+      if (map.getSource('z-' + z.id))     map.removeSource('z-' + z.id);
+      if (map.getSource('zlbl-' + z.id))  map.removeSource('zlbl-' + z.id);
     });
-
-    const isWeekend = dayType === 'friday' || dayType === 'saturday';
-    const centrePrice = scenario?.centrePeakPriceCHFh ?? 3.0;
 
     ZONES.forEach(z => {
       const res = zoneResults?.find(r => r.zoneId === z.id);
       const cat = res?.category;
-      const fillColor = cat === 'vert' ? '#22c55e'
-        : cat === 'orange' ? '#f59e0b'
-        : cat === 'rouge'  ? '#ef4444'
-        : z.color;
+      const fillColor = cat === 'vert' ? '#22c55e' : cat === 'orange' ? '#f59e0b' : cat === 'rouge' ? '#ef4444' : z.color;
 
-      // Source polygone
-      map.addSource(`z-${z.id}`, {
+      map.addSource('z-' + z.id, {
         type: 'geojson',
         data: {
           type: 'Feature',
@@ -262,232 +327,164 @@ export default function ZoneMap({
           geometry: { type: 'Polygon', coordinates: z.coords as unknown as [number, number][][] },
         },
       });
+      map.addLayer({ id: 'z-fill-' + z.id,    type: 'fill',   source: 'z-' + z.id, paint: { 'fill-color': fillColor, 'fill-opacity': res ? 0.28 : 0.10 } });
+      map.addLayer({ id: 'z-outline-' + z.id, type: 'line',   source: 'z-' + z.id, paint: { 'line-color': z.color, 'line-width': 1.8, 'line-opacity': 0.75 } });
 
-      map.addLayer({
-        id: `z-fill-${z.id}`, type: 'fill', source: `z-${z.id}`,
-        paint: { 'fill-color': fillColor, 'fill-opacity': res ? 0.28 : 0.10 },
-      });
-      map.addLayer({
-        id: `z-outline-${z.id}`, type: 'line', source: `z-${z.id}`,
-        paint: { 'line-color': z.color, 'line-width': 1.8, 'line-opacity': 0.75 },
-      });
-
-      // Centroïd pour le label
       const pts = (z.coords[0] as unknown as [number, number][]).slice(0, -1);
-      const cx = pts.reduce((s, p) => s + p[0], 0) / pts.length;
-      const cy = pts.reduce((s, p) => s + p[1], 0) / pts.length;
-      const labelText = res
-        ? `${z.label}\n${Math.round(res.shiftIndex * 100)}%`
-        : z.label;
+      const cx  = pts.reduce((s, p) => s + p[0], 0) / pts.length;
+      const cy  = pts.reduce((s, p) => s + p[1], 0) / pts.length;
+      const labelText = res ? z.label + '\n' + Math.round(res.shiftIndex * 100) + '%' : z.label;
 
-      map.addSource(`z-lbl-${z.id}`, {
-        type: 'geojson',
-        data: {
-          type: 'Feature',
-          properties: { text: labelText },
-          geometry: { type: 'Point', coordinates: [cx, cy] },
-        },
-      });
-      map.addLayer({
-        id: `z-label-${z.id}`, type: 'symbol', source: `z-lbl-${z.id}`,
-        layout: {
-          'text-field': ['get', 'text'],
-          'text-size': 10,
-          'text-font': ['Open Sans Regular'],
-          'text-anchor': 'center',
-          'text-line-height': 1.3,
-        },
-        paint: { 'text-color': '#1e1e2e', 'text-halo-color': '#ffffff', 'text-halo-width': 2 },
-      });
+      map.addSource('zlbl-' + z.id, { type: 'geojson', data: { type: 'Feature', properties: { text: labelText }, geometry: { type: 'Point', coordinates: [cx, cy] } } });
+      map.addLayer({ id: 'z-label-' + z.id, type: 'symbol', source: 'zlbl-' + z.id, layout: { 'text-field': ['get', 'text'], 'text-size': 10, 'text-font': ['Open Sans Regular'], 'text-anchor': 'center', 'text-line-height': 1.3 }, paint: { 'text-color': '#1e1e2e', 'text-halo-color': '#ffffff', 'text-halo-width': 2 } });
 
-      // Popup au clic sur la zone
-      map.on('click', `z-fill-${z.id}`, e => {
-        new maplibregl.Popup({ closeButton: true, maxWidth: '260px' })
+      map.on('click', 'z-fill-' + z.id, e => {
+        const centrePrice = scenario?.centrePeakPriceCHFh ?? 3.0;
+        new maplibregl.Popup({ closeButton: true, maxWidth: '250px' })
           .setLngLat(e.lngLat)
-          .setHTML(`
-            <div style="font-family:'DM Sans',sans-serif;padding:4px 0">
-              <div style="font-weight:800;font-size:14px;color:#111827;margin-bottom:3px">${z.label}</div>
-              <div style="font-size:11px;color:#6b7280;margin-bottom:10px;line-height:1.4">${z.description}</div>
-              ${res ? `
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
-                  <div style="background:#f8fafc;border-radius:8px;padding:7px;text-align:center">
-                    <div style="font-weight:800;font-size:20px;color:${cat === 'vert' ? '#22c55e' : cat === 'orange' ? '#f59e0b' : '#ef4444'}">${res.elasticityScore}</div>
-                    <div style="color:#9ca3af;font-size:9px;margin-top:2px">Élasticité /100</div>
-                  </div>
-                  <div style="background:#f8fafc;border-radius:8px;padding:7px;text-align:center">
-                    <div style="font-weight:800;font-size:20px;color:#111827">${Math.round(res.shiftIndex * 100)}%</div>
-                    <div style="color:#9ca3af;font-size:9px;margin-top:2px">Report modal</div>
-                  </div>
-                  ${res.occupancyPct !== undefined ? `
-                  <div style="background:#f8fafc;border-radius:8px;padding:7px;text-align:center">
-                    <div style="font-weight:800;font-size:20px;color:${(res.occupancyPct ?? 0) > 85 ? '#ef4444' : '#111827'}">${res.occupancyPct}%</div>
-                    <div style="color:#9ca3af;font-size:9px;margin-top:2px">Occupation</div>
-                  </div>` : ''}
-                  ${res.avgParkingCostCHF !== undefined ? `
-                  <div style="background:#f8fafc;border-radius:8px;padding:7px;text-align:center">
-                    <div style="font-weight:800;font-size:20px;color:#111827">${res.avgParkingCostCHF} CHF</div>
-                    <div style="color:#9ca3af;font-size:9px;margin-top:2px">Coût moyen</div>
-                  </div>` : ''}
-                </div>
-                ${res.equityFlag ? `<div style="margin-top:7px;font-size:10px;color:#dc2626;background:#fef2f2;padding:4px 8px;border-radius:6px">⚠ ${res.equityReason ?? 'Risque équité détecté'}</div>` : ''}
-              ` : `<div style="font-size:11px;color:#9ca3af;font-style:italic">Simulez un scénario pour voir les résultats.</div>`}
-              ${z.id === 'centre' ? `
-                <div style="margin-top:8px;padding-top:8px;border-top:1px solid #f1f5f9;font-size:10px;color:#374151">
-                  💰 Tarif actuel : <strong>${isWeekend ? 'GRATUIT ⚡' : `CHF ${centrePrice.toFixed(1)}/h`}</strong>
-                </div>` : ''}
-            </div>
-          `).addTo(map);
+          .setHTML(
+            '<div style="font-family:sans-serif;padding:4px 0">' +
+            '<div style="font-weight:800;font-size:14px;color:#111827;margin-bottom:3px">' + z.label + '</div>' +
+            '<div style="font-size:11px;color:#6b7280;margin-bottom:8px">' + z.description + '</div>' +
+            (res
+              ? '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">' +
+                '<div style="background:#f8fafc;border-radius:8px;padding:7px;text-align:center"><div style="font-weight:900;font-size:20px;color:' + (cat === 'vert' ? '#22c55e' : cat === 'orange' ? '#f59e0b' : '#ef4444') + '">' + res.elasticityScore + '</div><div style="color:#9ca3af;font-size:9px">Elasticite /100</div></div>' +
+                '<div style="background:#f8fafc;border-radius:8px;padding:7px;text-align:center"><div style="font-weight:900;font-size:20px;color:#111827">' + Math.round(res.shiftIndex * 100) + '%</div><div style="color:#9ca3af;font-size:9px">Report modal</div></div>' +
+                '</div>' +
+                (res.equityFlag ? '<div style="margin-top:7px;font-size:10px;color:#dc2626;background:#fef2f2;padding:4px 8px;border-radius:6px">Risque equite : ' + (res.equityReason ?? '') + '</div>' : '')
+              : '<div style="font-size:11px;color:#9ca3af">Simulez pour voir les resultats.</div>'
+            ) +
+            (z.id === 'centre' ? '<div style="margin-top:8px;padding-top:8px;border-top:1px solid #f1f5f9;font-size:10px;color:#374151">Tarif actuel : CHF ' + centrePrice.toFixed(1) + '/h</div>' : '') +
+            '</div>'
+          ).addTo(map);
       });
-      map.on('mouseenter', `z-fill-${z.id}`, () => { map.getCanvas().style.cursor = 'pointer'; });
-      map.on('mouseleave', `z-fill-${z.id}`, () => { map.getCanvas().style.cursor = ''; });
+      map.on('mouseenter', 'z-fill-' + z.id, () => { map.getCanvas().style.cursor = 'pointer'; });
+      map.on('mouseleave', 'z-fill-' + z.id, () => { map.getCanvas().style.cursor = ''; });
     });
-  }, [mapReady, zoneResults, dayType, scenario?.centrePeakPriceCHFh]);
+  }, [mapReady, zoneResults, scenario?.centrePeakPriceCHFh]);
 
-  // ── Marqueurs parkings ─────────────────────────────────────────────────────
-  useEffect(() => {
+  // ── Marqueurs parkings ───────────────────────────────────────────────────────
+  const buildMarkers = useCallback(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
-
     markersRef.current.forEach(m => m.remove());
     markersRef.current = [];
     if (!showParkings) return;
 
-    const isWeekend = dayType === 'friday' || dayType === 'saturday';
-    const centrePrice = scenario?.centrePeakPriceCHFh ?? 3.0;
+    const centrePrix = scenario?.centrePeakPriceCHFh ?? 3.0;
+    const prPrix     = scenario?.peripheriePeakPriceCHFh ?? 0;
 
     PARKINGS.forEach(pk => {
-      const effectivePrice = (isWeekend && pk.type === 'centre') ? 0 : pk.priceCHFh;
-      const priceDisplay   = effectivePrice === 0 ? 'GRATUIT' : `CHF ${effectivePrice.toFixed(1)}/h`;
+      const effectivePrice = pk.type === 'centre' ? centrePrix : pk.type === 'pr' ? prPrix : pk.basePriceCHFh;
       const bgColor = pk.type === 'pr'
-        ? '#16a34a'
-        : effectivePrice === 0
-          ? '#22c55e'
-          : pk.type === 'centre' && centrePrice > 3.5
-            ? '#dc2626'
-            : MARKER_BG[pk.type];
+        ? (prPrix > 0 ? '#d97706' : '#16a34a')
+        : pk.type === 'centre'
+          ? (centrePrix > pk.basePriceCHFh + 0.1 ? '#dc2626' : centrePrix < pk.basePriceCHFh - 0.1 ? '#22c55e' : '#2563eb')
+          : MARKER_BG[pk.type];
 
       const el = document.createElement('div');
       el.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;';
-      el.innerHTML = `
-        <div style="background:${bgColor};color:#fff;font-weight:800;font-size:10px;
-          min-width:28px;height:28px;border-radius:8px;display:flex;align-items:center;
-          justify-content:center;border:2.5px solid white;box-shadow:0 2px 8px rgba(0,0,0,.25);
-          padding:0 6px;white-space:nowrap;gap:3px;">
-          <span>🅿</span><span>${pk.shortName}</span>
-        </div>
-        <div style="width:2px;height:5px;background:${bgColor};"></div>
-      `;
+      el.innerHTML =
+        '<div style="background:' + bgColor + ';color:#fff;font-weight:800;font-size:10px;' +
+        'min-width:28px;height:28px;border-radius:8px;display:flex;align-items:center;' +
+        'justify-content:center;border:2.5px solid white;box-shadow:0 2px 8px rgba(0,0,0,.25);' +
+        'padding:0 6px;white-space:nowrap;gap:3px;">' +
+        (pk.editable ? '&#9998; ' : '') + pk.shortName +
+        '</div>' +
+        '<div style="width:2px;height:5px;background:' + bgColor + ';"></div>';
 
-      const popup = new maplibregl.Popup({ offset: 30, maxWidth: '240px', closeButton: true })
-        .setHTML(`
-          <div style="font-family:'DM Sans',sans-serif;padding:3px 0">
-            <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
-              <div style="width:10px;height:10px;border-radius:3px;background:${bgColor};flex-shrink:0"></div>
-              <div style="font-weight:800;font-size:13px;color:#111827">${pk.name}</div>
-            </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:8px">
-              <div style="background:#f8fafc;border-radius:8px;padding:7px;text-align:center">
-                <div style="font-weight:800;font-size:20px;color:#111827">${pk.capacity}</div>
-                <div style="color:#9ca3af;font-size:9px;margin-top:1px">places</div>
-              </div>
-              <div style="background:${pk.priceCHFh === 0 ? '#f0fdf4' : '#eff6ff'};border-radius:8px;padding:7px;text-align:center">
-                <div style="font-weight:800;font-size:${effectivePrice === 0 ? '12' : '17'}px;color:${effectivePrice === 0 ? '#16a34a' : '#2563eb'};line-height:1.2">
-                  ${isWeekend && pk.type === 'centre' ? '<span style="color:#d97706;font-size:12px">GRATUIT ⚡</span>' : priceDisplay}
-                </div>
-                <div style="color:#9ca3af;font-size:9px;margin-top:1px">tarif pointe</div>
-              </div>
-            </div>
-            <div style="font-size:10px;color:#374151;margin-bottom:4px">📋 ${pk.priceNote}</div>
-            ${pk.freeNote ? `<div style="font-size:10px;background:#f0fdf4;color:#15803d;padding:4px 8px;border-radius:6px;margin-bottom:4px">✓ ${pk.freeNote}</div>` : ''}
-            ${pk.walkMin > 0 ? `<div style="font-size:10px;color:#6b7280;margin-bottom:4px">🚶 ${pk.walkMin} min à pied du centre</div>` : ''}
-            <div style="font-size:9px;color:#d1d5db;border-top:1px solid #f1f5f9;padding-top:4px;margin-top:4px">
-              Source: ${pk.source}
-            </div>
-          </div>
-        `);
+      el.addEventListener('click', e => {
+        e.stopPropagation();
+        setEditParking(prev => prev?.id === pk.id ? null : pk);
+      });
 
-      const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
-        .setLngLat(pk.coords)
-        .setPopup(popup)
-        .addTo(map);
+      el.addEventListener('mouseenter', () => { el.firstElementChild && ((el.firstElementChild as HTMLElement).style.transform = 'scale(1.1)'); });
+      el.addEventListener('mouseleave', () => { el.firstElementChild && ((el.firstElementChild as HTMLElement).style.transform = 'scale(1)'); });
 
-      markersRef.current.push(marker);
+      markersRef.current.push(
+        new maplibregl.Marker({ element: el, anchor: 'bottom' }).setLngLat(pk.coords).addTo(map)
+      );
     });
-  }, [mapReady, showParkings, dayType, scenario?.centrePeakPriceCHFh]);
+  }, [mapReady, showParkings, scenario?.centrePeakPriceCHFh, scenario?.peripheriePeakPriceCHFh]);
 
-  // ─── Rendu ─────────────────────────────────────────────────────────────────
+  useEffect(() => { buildMarkers(); }, [buildMarkers]);
+
+  // ─── Rendu ──────────────────────────────────────────────────────────────────
+
+  const centrePrix = scenario?.centrePeakPriceCHFh ?? 3.0;
+  const prPrix     = scenario?.peripheriePeakPriceCHFh ?? 0;
+
+  const selectedParkingPrice = editParking
+    ? (editParking.type === 'centre' ? centrePrix : editParking.type === 'pr' ? prPrix : editParking.basePriceCHFh)
+    : 0;
 
   return (
-    <div className={`relative flex flex-col ${className}`} style={{ height }}>
-
-      <div ref={containerRef} className="flex-1 overflow-hidden" style={{ minHeight: 0 }} />
+    <div className={'relative flex flex-col ' + className} style={{ height, position: 'relative' }}>
+      <div ref={containerRef} style={{ flex: 1, minHeight: 0, overflow: 'hidden', height: '100%' }} />
 
       {/* Toggle parkings */}
       <div style={{ position: 'absolute', top: 12, left: 12, zIndex: 10 }}>
         <button
           onClick={() => setShowParkings(v => !v)}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            padding: '5px 10px', borderRadius: 8, fontSize: 11, fontWeight: 600,
-            cursor: 'pointer', border: '1.5px solid',
-            borderColor: showParkings ? '#2563eb' : '#e5e7eb',
-            background:  showParkings ? '#2563eb' : 'white',
-            color:       showParkings ? 'white'   : '#6b7280',
-            boxShadow: '0 1px 4px rgba(0,0,0,.1)',
-          }}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: 8, fontSize: 11, fontWeight: 600, cursor: 'pointer', border: '1.5px solid', borderColor: showParkings ? '#2563eb' : '#e5e7eb', background: showParkings ? '#2563eb' : 'white', color: showParkings ? 'white' : '#6b7280', boxShadow: '0 1px 4px rgba(0,0,0,.1)' }}
         >
-          🅿 Parkings
+          P Parkings {showParkings && editParking === null ? '(clic pour modifier)' : ''}
         </button>
       </div>
 
-      {/* Légende parkings */}
-      {showParkings && (
-        <div style={{
-          position: 'absolute', bottom: 30, left: 12, zIndex: 10,
-          background: 'rgba(255,255,255,.96)', borderRadius: 12,
-          padding: '10px 14px', boxShadow: '0 4px 16px rgba(0,0,0,.1)', minWidth: 205,
-        }}>
-          <div style={{ fontSize: 10, fontWeight: 800, color: '#9ca3af', marginBottom: 7, textTransform: 'uppercase', letterSpacing: '.06em' }}>
+      {/* Panel edition parking */}
+      {editParking && (
+        <ParkingEditPanel
+          pk={editParking}
+          scenarioPrice={selectedParkingPrice}
+          onClose={() => setEditParking(null)}
+          onApply={price => {
+            if (onParkingPriceChange) onParkingPriceChange(editParking.id, price);
+            setEditParking(null);
+          }}
+        />
+      )}
+
+      {/* Legende parkings */}
+      {showParkings && !editParking && (
+        <div style={{ position: 'absolute', bottom: 30, left: 12, zIndex: 10, background: 'rgba(255,255,255,.96)', borderRadius: 12, padding: '10px 14px', boxShadow: '0 4px 16px rgba(0,0,0,.1)', minWidth: 200 }}>
+          <div style={{ fontSize: 10, fontWeight: 800, color: '#9ca3af', marginBottom: 7, textTransform: 'uppercase' as const, letterSpacing: '.06em' }}>
             Parkings Sion
           </div>
-          {([
-            ['#2563eb', 'Centre (1424 pl.)',       'CHF 3/h · 1h gratuite'],
-            ['#f97316', 'Gare CFF (~300 pl.)',      '~CHF 2/h'],
-            ['#6366f1', 'Périphérie payante (582 pl.)', '~CHF 1.50/h'],
-            ['#16a34a', 'P+R gratuits (910 pl.)',   'BS 11 → centre'],
-          ] as [string, string, string][]).map(([color, label, sub]) => (
-            <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 6 }}>
-              <div style={{ width: 10, height: 10, borderRadius: 3, background: color, flexShrink: 0 }} />
+          {[
+            { color: '#2563eb', label: 'Centre (1424 pl.)',    sub: 'CHF ' + centrePrix.toFixed(1) + '/h (simule)' },
+            { color: '#f97316', label: 'Gare CFF (~300 pl.)',  sub: '~CHF 2.00/h' },
+            { color: '#6366f1', label: 'Pericentre (582 pl.)', sub: '~CHF 1.50/h' },
+            { color: '#16a34a', label: 'P+R (910 pl.)',        sub: prPrix > 0 ? 'CHF ' + prPrix.toFixed(1) + '/h' : 'GRATUIT' },
+          ].map(item => (
+            <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 6 }}>
+              <div style={{ width: 10, height: 10, borderRadius: 3, background: item.color, flexShrink: 0 }} />
               <div>
-                <div style={{ fontSize: 11, color: '#374151', fontWeight: 600 }}>{label}</div>
-                <div style={{ fontSize: 9, color: '#9ca3af' }}>{sub}</div>
+                <div style={{ fontSize: 11, color: '#374151', fontWeight: 600 }}>{item.label}</div>
+                <div style={{ fontSize: 9, color: '#9ca3af' }}>{item.sub}</div>
               </div>
             </div>
           ))}
-          <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: 6, marginTop: 2, fontSize: 9, color: '#d1d5db' }}>
-            Cliquez sur un marqueur pour les détails
+          <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: 6, marginTop: 2, fontSize: 9, color: '#9ca3af' }}>
+            Cliquer sur un marqueur pour modifier
           </div>
         </div>
       )}
 
-      {/* Légende bascule modale (si résultats disponibles) */}
+      {/* Legende bascule */}
       {zoneResults && zoneResults.length > 0 && (
-        <div style={{
-          position: 'absolute', bottom: 30, right: 12, zIndex: 10,
-          background: 'rgba(255,255,255,.96)', borderRadius: 12,
-          padding: '10px 14px', boxShadow: '0 4px 16px rgba(0,0,0,.1)',
-        }}>
-          <div style={{ fontSize: 10, fontWeight: 800, color: '#9ca3af', marginBottom: 7, textTransform: 'uppercase', letterSpacing: '.06em' }}>
+        <div style={{ position: 'absolute', bottom: 30, right: 12, zIndex: 10, background: 'rgba(255,255,255,.96)', borderRadius: 12, padding: '10px 14px', boxShadow: '0 4px 16px rgba(0,0,0,.1)' }}>
+          <div style={{ fontSize: 10, fontWeight: 800, color: '#9ca3af', marginBottom: 7, textTransform: 'uppercase' as const, letterSpacing: '.06em' }}>
             Potentiel bascule
           </div>
-          {([
-            ['vert',   'Fort (≥60)',     '#22c55e'],
-            ['orange', 'Modéré (35–59)', '#f59e0b'],
-            ['rouge',  'Faible (<35)',   '#ef4444'],
-          ] as [string, string, string][]).map(([, label, color]) => (
-            <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5, fontSize: 11 }}>
-              <div style={{ width: 10, height: 10, borderRadius: 3, background: color }} />
-              <span style={{ color: '#374151' }}>{label}</span>
+          {[
+            { label: 'Fort (60%+)',   color: '#22c55e' },
+            { label: 'Moyen (35-59%)', color: '#f59e0b' },
+            { label: 'Faible (-35%)', color: '#ef4444' },
+          ].map(item => (
+            <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5, fontSize: 11 }}>
+              <div style={{ width: 10, height: 10, borderRadius: 3, background: item.color }} />
+              <span style={{ color: '#374151' }}>{item.label}</span>
             </div>
           ))}
         </div>
