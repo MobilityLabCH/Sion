@@ -1363,7 +1363,7 @@ function DonneesTab():JSX.Element {
             — Taux occupation P+R Échutes I/II
           </div>
           <div style={{padding:'8px 10px',background:C.blueL,borderRadius:7,border:`1px solid ${C.blueB}`}}>
-            <strong style={{color:C.blue}}>Utile (>12 mois)</strong><br/>
+            <strong style={{color:C.blue}}>Utile (&gt;12 mois)</strong><br/>
             — Enquête OD complète (OFROU)<br/>
             — Données emplois zone Ronquoz<br/>
             — Microrecensement local 2026
