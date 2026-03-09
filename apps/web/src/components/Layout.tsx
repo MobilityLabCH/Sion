@@ -10,6 +10,7 @@ const NAV = [
   { to: '/#dashboard',  label: 'Résultats',  icon: '◉' },
   { to: '/#personas',   label: 'Personas',   icon: '◑' },
   { to: '/#actions',    label: 'Actions',    icon: '▷' },
+  { to: '/#donnees',    label: 'Données',    icon: '⊞' },
 ];
 
 const SEV_COLORS: Record<string, string> = {
