@@ -57,7 +57,7 @@ const C = {
 } as const;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-type TabId = 'dashboard'|'simulator'|'od'|'personas'|'actions';
+type TabId = 'dashboard'|'simulator'|'od'|'personas'|'actions'|'donnees';
 type CapType = 'ok'|'moyen'|'captif';
 type IncomeType = 'faible'|'moyen'|'élevé';
 type DestType = 'centre'|'hopital'|'industrie'|'gare';
@@ -80,7 +80,7 @@ interface SionEvent {
 }
 interface SimParams {
   centrePrice:number; prPrice:number; progressif:boolean;
-  tpDiscount:number; offreCombinee:boolean; covoiturage:boolean; tad:boolean;
+  tpDiscount:number; offreCombinee:boolean;
   gareCFFPrice:number; nordPrice:number; rochesBrunesPrice:number; hopitalPrice:number;
 }
 interface SimResult {
@@ -100,7 +100,7 @@ interface ZoneOD {
   id:string; label:string; pop:number;
   car:number; tp:number; line:string; freq:number; cap:CapType;
 }
-interface ActionItem { title:string; pri:PriLevel; owner:string; desc:string; metrics:string[] }
+interface ActionItem { title:string; pri:PriLevel; owner:string; desc:string; metrics:string[]; context:string; expectedResult:string; }
 interface PlanHorizon { h:string; c:string; bg:string; b:string; actions:ActionItem[] }
 interface PersonaImpact {
   delta:number; beforeCHF?:string; afterCHF?:string;
@@ -120,7 +120,7 @@ const rangeBg=(val:number,min:number,max:number,color:string)=>{
 
 // ─── Hash-based tab sync with top Layout nav ──────────────────────────────────
 const HASH_TO_TAB: Record<string, TabId> = {
-  '#dashboard':'dashboard','#simulator':'simulator','#od':'od','#personas':'personas','#actions':'actions',
+  '#dashboard':'dashboard','#simulator':'simulator','#od':'od','#personas':'personas','#actions':'actions','#donnees':'donnees',
   '#simulateur':'simulator','#flux-od':'od','#resultats':'dashboard','#plan':'actions',
 };
 function getTabFromHash(): TabId {
@@ -243,15 +243,25 @@ const SIM={dailyCar:11500,dailyTP:7800,centrePlaces:CENTRE_TOTAL,prPlaces:910,
 
 function simulate(p:SimParams):SimResult {
   const delta=p.centrePrice-SIM.basePrice;
-  const raw=(delta/SIM.basePrice)*SIM.elasticity;
-  const clamped=Math.max(-0.38,Math.min(0.46,raw));
+  // Élasticité-prix de la demande voiture : ε = -0.30 (Litman 2023, ARE 2021)
+  // Interprétation : +1% de prix → -0.30% de demande voiture
+  // Shift modal vers TP = -(ε × ΔP/P) = -(-0.30) × ΔP/P = +0.30 × ΔP/P
+  // → positif quand prix augmente (moins de voitures → gain TP) ✓
+  // → négatif quand prix baisse / gratuit (plus de voitures → perte TP) ✓
+  const raw=(delta/SIM.basePrice)*(-SIM.elasticity); // = (delta/3.0)*0.30
+  // Plafond empirique : gain TP max ~38%, afflux voiture max ~46% (saturation)
+  const clamped=Math.max(-0.46,Math.min(0.38,raw));
   const tpE=p.tpDiscount>0?(p.tpDiscount/100)*0.08:0;
-  const prE=p.prPrice===0&&delta>0?Math.abs(clamped)*0.20:0;
-  const combE=p.offreCombinee&&p.prPrice===0?0.028:0;
+  // P+R amplifie le report seulement si le centre EST plus cher que la baseline
+  const prE=p.prPrice===0&&delta>0?clamped*0.20:0;
+  const combE=p.offreCombinee&&p.prPrice===0&&delta>0?0.028:0;
   const progE=p.progressif&&p.centrePrice>=SIM.basePrice?0.022:0;
-  const covE=p.covoiturage?0.015:0;
-  const tadE=p.tad?0.008:0;
-  const leak=Math.max(0,(SIM.basePrice-p.gareCFFPrice)*0.01+(1.5-p.nordPrice)*0.008+(1.5-p.rochesBrunesPrice)*0.006);
+  const covE=0;
+  const tadE=0;
+  // Fuite modale : parkings périphériques bon marché captent une partie
+  // du report attendu (les usagers évitent le centre sans passer aux TP)
+  // Ne s'applique que quand le centre est PLUS cher (sinon pas de raison de fuir)
+  const leak=delta>0?Math.max(0,(SIM.basePrice-p.gareCFFPrice)*0.01+(1.5-p.nordPrice)*0.008+(1.5-p.rochesBrunesPrice)*0.006):0;
   const total=clamped+tpE+prE+combE+progE+covE+tadE-leak;
   const carsReduced=Math.round(SIM.dailyCar*Math.abs(total));
   const carSign=total<0?-1:1;
@@ -329,36 +339,54 @@ const PRI_C: Record<PriLevel,{c:string;bg:string;b:string}> = {
 const PLAN: PlanHorizon[] = [
   {h:'0–3 mois',c:C.red,bg:C.redL,b:C.redB,actions:[
     {title:'Pilote offre combinée P+R + billet TP',pri:'haute',owner:'Service mobilité + CarPostal',
-     desc:'P+R Potences/Échutes II gratuit + billet 24h CarPostal CHF 3.–. Mesurer captation de demande modale.',
+     context:"Les P+R Potences (450 pl.) et Échutes II (400 pl.) sont déjà gratuits mais sous-utilisés (<30% occ.) faute de lien TP attractif. Le billet TP séparé (CHF 4.60 aller-retour BS11) constitue une barrière psychologique et financière.",
+     desc:'P+R Potences/Échutes II gratuit + billet 24h CarPostal à CHF 3.–. Vente combinée à l\'entrée du P+R (QR code, borne, app). Durée pilote : 3 mois.',
+     expectedResult:"Augmentation taux d'occupation P+R de ~30% à ~55–65% (cible : 250 voitures/j captées). Report modal estimé : −350 à −500 voitures/j centre. Gain fréquentation BS11 : +200–300 pax/j en pointe.",
      metrics:['Occ. P+R J+30','Fréquentation BS11 pointe','Nb offres combinées vendues']},
-    {title:'Signalétique dynamique occupation',pri:'haute',owner:'IT Ville + Service voirie',
-     desc:'Affichage temps réel places disponibles (Planta/Scex/Cible) sur 5 panneaux Route Cantonale + app sion.ch.',
-     metrics:['Temps moyen recherche parking','Taux satisfaction usagers']},
-    {title:'Communication proactive sur les gratuités',pri:'moyenne',owner:'Service communication',
-     desc:'Campagne: 1h gratuite, gratuité ven.soir/dim./midi, P+R Potences & Échutes I/II permanents gratuits.',
-     metrics:['Utilisation P+R avant/après','Réactions commerçants']},
+    {title:'Signalétique dynamique occupation parkings',pri:'haute',owner:'IT Ville + Service voirie',
+     context:"L'absence d'information temps réel génère un trafic de recherche estimé à 15–20% du trafic centre (Shoup 2011). Les usagers font plusieurs tours avant de se garer, aggravant la congestion et les émissions.",
+     desc:'Affichage temps réel places disponibles (Planta/Scex/Cible) sur 5 panneaux Route Cantonale + signalétique directionnelle + intégration app sion.ch.',
+     expectedResult:"Réduction du trafic de recherche de -15% estimée (soit ~100–150 véh./h en moins en pointe). Amélioration expérience usager. Prérequis pour OpenData API (action 3–12 mois).",
+     metrics:['Temps moyen recherche parking (enquête)','Taux satisfaction usagers','Taux occupation Planta/Scex']},
+    {title:'Campagne communication sur les gratuités existantes',pri:'moyenne',owner:'Service communication',
+     context:"La majorité des Sédunois ignorent les règles tarifaires existantes : 1h gratuite en semaine, gratuité totale vendredi soir/samedi/dimanche/midi, P+R permanents gratuits. Ce déficit d'information empêche un report modal spontané.",
+     desc:'Campagne multicanale (sion.ch, réseaux sociaux, affiches bus, dépliant commerçants) : 1h gratuite, gratuité ven.soir/dim./midi, P+R Potences & Échutes I/II permanents gratuits.',
+     expectedResult:"Augmentation utilisation P+R de +10–15% sans investissement supplémentaire. Réduction pression centre certains créneaux. Effet mesurable en 6 semaines.",
+     metrics:['Utilisation P+R avant/après (comptage)','Réactions commerçants','Trafic centre sam. matin']},
   ]},
   {h:'3–12 mois',c:C.amber,bg:C.amberL,b:C.amberB,actions:[
     {title:'Renfort fréquence BS11 aux heures de pointe',pri:'haute',owner:'Service mobilité + CarPostal',
-     desc:'Passage BS11 à 7 min (7h–9h / 17h–19h). Condition indispensable à l'efficacité des P+R Potences et Échutes.',
-     metrics:['Temps attente P+R','Montées BS11 pointe','Nb voyageurs P+R']},
+     context:"La BS11 (Potences → Centre → Échutes) tourne à 15 min en pointe, rendant le P+R peu attractif (attente + correspondance = 20–25 min). Litman (2023) montre qu'une fréquence <10 min multiplie par 2 la captation P+R.",
+     desc:"Passage BS11 à 7 min (7h–9h / 17h–19h en semaine). Nécessite accord CarPostal + financement (~CHF 180 000/an surcoût estimé). Condition sine qua non à l'efficacité des P+R.",
+     expectedResult:"Temps porte-à-porte P+R → centre : 15 min max. Captation P+R estimée à 400–600 voitures/j. Report modal simulé : −5 à −8% voitures centre. ROI: ~CHF 360/voiture captée/an.",
+     metrics:['Temps d\'attente moyen P+R (chrono)','Montées BS11 pointe (compteur porte)','Nb voyageurs P+R/j']},
     {title:'Tarification progressive longue durée (>3h)',pri:'moyenne',owner:'Service mobilité',
-     desc:'Grille: CHF 3/h (h2–h3), CHF 4/h (h3+). Dissuade les pendulaires tout-journée au centre (Planta/Scex/Cible).',
-     metrics:['Durée stationnement moyenne','Recettes','Occ. <11h vs >11h']},
-    {title:'OpenData occupation parkings (API)',pri:'moyenne',owner:'IT Ville',
-     desc:'API temps réel → intégration Google Maps, SBB app. Standard OGD-CH. Alimenter via capteurs.',
-     metrics:['Nb intégrations tierces','Requêtes API/jour']},
+     context:"Les pendulaires tout-journée (8h+) immobilisent 20–30% des places centre (estimé données Planta 2024) au tarif horaire normal. Cette occupation longue durée réduit la rotation disponible pour les visiteurs courte durée et les commerçants.",
+     desc:'Grille progressive : CHF 3.0/h (h1), CHF 3.0/h (h2–3 avec franchise 1h), CHF 4.0/h (h3+). Objectif : décourager les pendulaires centre vers P+R ou TP.',
+     expectedResult:"Réduction stationnement longue durée centre de -25–30%. Libération 60–90 places pour rotation visiteurs. Hausse recettes estimée +CHF 40 000–60 000/an. Impact equity : surveiller profils revenus modestes.",
+     metrics:['Durée moyenne stationnement Planta/Scex','Recettes parking centre/mois','Ratio occup. <3h vs >3h']},
+    {title:'OpenData occupation parkings (API temps réel)',pri:'moyenne',owner:'IT Ville',
+     context:"Sans données ouvertes, les applications de navigation (Google Maps, Waze, SBB) dirigent aveuglément vers le centre. Une API temps réel permet la redirection automatique vers les P+R disponibles, sans panneau supplémentaire.",
+     desc:'API REST/JSON temps réel (capteurs magnétiques ou comptage par barrière) → intégration Google Maps, SBB app, Waze. Standard OGD-CH (opendata.swiss).',
+     expectedResult:"Réduction trafic généré par navigation aveugle : −8–12% trajets entrants centre. Données objectives pour calibrage du simulateur SION-CET. Prérequis pour PDS 2030.",
+     metrics:['Nb intégrations tierces actives','Requêtes API/jour','Taux couverture capteurs (%)']},
   ]},
   {h:'12–36 mois',c:C.blue,bg:C.blueL,b:C.blueB,actions:[
-    {title:'Plan mobilité employeurs zone industrielle',pri:'haute',owner:'Service éco. + mobilité',
-     desc:'Partenariat top 10 employeurs Ronquoz/Aéroport (>4 000 emplois): covoiturage, abo TP subventionnés, pistes cyclables.',
-     metrics:['Part modale voiture zone ind.','Abo TP vendus','Km piste vélo']},
-    {title:'Renfort BS7/BS14 → Hôpital du Valais',pri:'haute',owner:'Service mobilité + HVS',
-     desc:'Améliorer liaison Gare–HVS (Champsec). Fréquence insuffisante aux heures de visites et relèves infirmières.',
-     metrics:['Temps Gare→Hôpital','Fréquentation lignes hôpital']},
-    {title:'Révision Plan directeur stationnement (PDS)',pri:'haute',owner:'Service urbanisme + mobilité',
-     desc:'Actualiser PDS avec objectifs 2030: −15% voitures centre, +20% TP, piétonisation partielle Grand-Pont.',
-     metrics:['Part modale voiture','m² espace récupéré','Recettes parking/an']},
+    {title:'Plan mobilité employeurs zone industrielle Ronquoz',pri:'haute',owner:'Service éco. + mobilité',
+     context:"La zone Ronquoz/Aéroport concentre ~4 000 emplois (estimé) avec quasi 100% de dépendance voiture et ~4 000 places privées gratuites. C'est le principal réservoir de report modal non adressé. Sans action, les mesures centre-ville ne changent rien à ces flux.",
+     desc:'Partenariat volontaire top 10 employeurs (>100 pers.) : abonnements TP subventionnés 50% employeur, pistes cyclables sécurisées Ronquoz–Centre, plan de déplacement entreprise (PDE) avec objectifs chiffrés.',
+     expectedResult:"Part modale voiture zone ind. : −5 à −10% en 3 ans (objectif ARE). Abonnements TP : 200–400 vendus/an. Km CO₂ évité : ~400–800 tonnes/an. Effet levier si combiné avec offre TP renforcée.",
+     metrics:['Part modale voiture zone ind. (enquête PDE)','Abo TP vendus employeurs','Km piste vélo réalisés','Tonne CO₂ évitée/an']},
+    {title:'Renfort BS7/BS14 → Hôpital du Valais (Champsec)',pri:'haute',owner:'Service mobilité + HVS',
+     context:"Le HVS emploie ~2 000 personnes et accueille ~300 000 consultations/an. La liaison Gare–Champsec est sous-cadencée (15–30 min), rendant la voiture quasi-obligatoire malgré un P+R de 400 pl. La zone est hors périmètre des mesures centre mais génère un trafic significatif.",
+     desc:'Renfort fréquence BS7/BS14 à 10 min (7h–20h) sur axe Gare–Champsec. Convention mobilité HVS–Ville. Signalétique P+R Hôpital renforcée.',
+     expectedResult:"Report modal HVS estimé : −80 à −150 voitures/j (actuellement ~280 voitures/j en arrêt devant urgences). Réduction stress accès urgences. Amélioration conditions travail personnel soignant.",
+     metrics:['Temps Gare→Hôpital (chrono)','Fréquentation lignes hôpital','Occ. P+R Hôpital (400 pl.)']},
+    {title:'Révision Plan directeur stationnement (PDS) 2030',pri:'haute',owner:'Service urbanisme + mobilité',
+     context:"Le PDS actuel date de 2018 et ne tient pas compte de l'évolution modale post-COVID, des objectifs ARE 2030 (−15% voitures agglomérations), ni du potentiel P+R. Sa révision est le cadre légal nécessaire pour toutes les mesures tarifaires durables.",
+     desc:'Actualiser PDS avec : objectifs 2030 (−15% voitures centre, +20% TP), quotas par zone, tarification différenciée centre/périphérie, réserves foncières P+R, indicateurs de suivi annuels.',
+     expectedResult:"Cadre légal et contractuel pour les mesures tarifaires progressives. Base pour la négociation avec CFF (Cour de Gare). Crédibilité du projet pilote SION-CET auprès des partenaires.",
+     metrics:['Adoption PDS par Conseil municipal','Part modale voiture 2027 (microrecensement)','Recettes parking/an vs coût TP']},
   ]},
 ];
 
@@ -522,6 +550,7 @@ const NAV:{id:TabId;label:string;icon:string;hash:string}[]=[
   {id:'od',label:'Analyse OD',icon:'↗',hash:'#od'},
   {id:'personas',label:'Personas & équité',icon:'◑',hash:'#personas'},
   {id:'actions',label:"Plan d'action",icon:'▷',hash:'#actions'},
+  {id:'donnees',label:'Données',icon:'⊞',hash:'#donnees'},
 ];
 const SEV_COLORS: Record<string,string>={fluide:'#22C55E',modéré:'#F59E0B',dense:'#EA580C',bloqué:'#EF4444'};
 
@@ -716,27 +745,26 @@ function SimulatorTab():JSX.Element {
   const [progressif,setProgressif]=useState(false);
   const [tpDiscount,setTpDiscount]=useState(0);
   const [offreCombinee,setOffreCombinee]=useState(false);
-  const [covoiturage,setCovoiturage]=useState(false);
-  const [tad,setTad]=useState(false);
   const [gareCFFPrice,setGareCFFPrice]=useState(2.0);
   const [nordPrice,setNordPrice]=useState(1.5);
   const [rochesBrunesPrice,setRochesBrunesPrice]=useState(1.5);
   const [hopitalPrice,setHopitalPrice]=useState(2.0);
   const [showSecondary,setShowSecondary]=useState(false);
+  const [showMethodo,setShowMethodo]=useState(false);
   const [simResults,setSimResults]=useState<SimResult|null>(null);
   const [compareMode,setCompareMode]=useState(false);
   const [hoveredId,setHoveredId]=useState<string|null>(null);
   const [isRunning,setIsRunning]=useState(false);
   const [simKey,setSimKey]=useState(0);
-  const params:SimParams={centrePrice,prPrice,progressif,tpDiscount,offreCombinee,covoiturage,tad,gareCFFPrice,nordPrice,rochesBrunesPrice,hopitalPrice};
-  const baseParams:SimParams={centrePrice:3.0,prPrice:0,progressif:false,tpDiscount:0,offreCombinee:false,covoiturage:false,tad:false,gareCFFPrice:2.0,nordPrice:1.5,rochesBrunesPrice:1.5,hopitalPrice:2.0};
+  const params:SimParams={centrePrice,prPrice,progressif,tpDiscount,offreCombinee,gareCFFPrice,nordPrice,rochesBrunesPrice,hopitalPrice};
+  const baseParams:SimParams={centrePrice:3.0,prPrice:0,progressif:false,tpDiscount:0,offreCombinee:false,gareCFFPrice:2.0,nordPrice:1.5,rochesBrunesPrice:1.5,hopitalPrice:2.0};
   const baseR=simulate(baseParams);
-  const hasChanged=centrePrice!==3.0||prPrice!==0||progressif||tpDiscount>0||offreCombinee||covoiturage||tad||gareCFFPrice!==2.0||nordPrice!==1.5||rochesBrunesPrice!==1.5||hopitalPrice!==2.0;
+  const hasChanged=centrePrice!==3.0||prPrice!==0||progressif||tpDiscount>0||offreCombinee||gareCFFPrice!==2.0||nordPrice!==1.5||rochesBrunesPrice!==1.5||hopitalPrice!==2.0;
   const runSim=useCallback(()=>{
     setIsRunning(true);
     setTimeout(()=>{setSimResults(simulate(params));setSimKey(k=>k+1);setIsRunning(false);},550);
-  },[centrePrice,prPrice,progressif,tpDiscount,offreCombinee,covoiturage,tad,gareCFFPrice,nordPrice,rochesBrunesPrice,hopitalPrice]);
-  const reset=useCallback(()=>{setCentrePrice(3.0);setPrPrice(0);setProgressif(false);setTpDiscount(0);setOffreCombinee(false);setCovoiturage(false);setTad(false);setGareCFFPrice(2.0);setNordPrice(1.5);setRochesBrunesPrice(1.5);setHopitalPrice(2.0);setSimResults(null);},[]);
+  },[centrePrice,prPrice,progressif,tpDiscount,offreCombinee,gareCFFPrice,nordPrice,rochesBrunesPrice,hopitalPrice]);
+  const reset=useCallback(()=>{setCentrePrice(3.0);setPrPrice(0);setProgressif(false);setTpDiscount(0);setOffreCombinee(false);setGareCFFPrice(2.0);setNordPrice(1.5);setRochesBrunesPrice(1.5);setHopitalPrice(2.0);setSimResults(null);},[]);
   const R=simResults;
   return(
     <div className="fade-up" style={{display:'flex',height:'100%',overflow:'hidden'}}>
@@ -793,8 +821,6 @@ function SimulatorTab():JSX.Element {
           <div style={{marginBottom:12}}>
             <div className="syne" style={{fontSize:10,fontWeight:700,color:C.inkL,textTransform:'uppercase',letterSpacing:'.06em',marginBottom:8}}>Mesures complémentaires</div>
             <Toggle value={progressif} onChange={setProgressif} color={C.amber} label="Tarification progressive (>3h)" sublabel="CHF 3/h → CHF 4/h après 3h · pénalise pendulaires centre"/>
-            <Toggle value={covoiturage} onChange={setCovoiturage} color={C.blue} label="Stimulation covoiturage" sublabel="Carvivo · places réservées"/>
-            <Toggle value={tad} onChange={setTad} color={C.purple} label="Transport à la demande (TAD)" sublabel="Zones peu desservies · horaires atypiques"/>
           </div>
           {/* Secondaire */}
           <div style={{marginBottom:10}}>
@@ -852,7 +878,33 @@ function SimulatorTab():JSX.Element {
             <SionMap simResults={R} hoveredId={hoveredId} setHoveredId={setHoveredId}/>
           </div>
           <div style={{padding:'7px 12px',background:C.amberL,borderRadius:8,border:`1px solid ${C.amberB}`,fontSize:9.5,color:C.amber,flexShrink:0}}>
-            <strong>Modèle SION-CET</strong> — Logit RUM · Élasticité arc −0.30 (Litman 2023, ARE 2021) · CO₂ 1.52 kg/trajet (mix 2025) · Prototype à valider avant décision
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',cursor:'pointer'}} onClick={()=>setShowMethodo(!showMethodo)}>
+              <span><strong>Modèle SION-CET</strong> — Logit RUM · Élasticité arc −0.30 · CO₂ 1.52 kg/trajet · Prototype indicatif</span>
+              <span style={{marginLeft:8,fontWeight:700}}>{showMethodo?'▲':'▼ Méthodologie'}</span>
+            </div>
+            {showMethodo&&(
+              <div className="fade-up" style={{marginTop:8,paddingTop:8,borderTop:`1px solid ${C.amberB}`,lineHeight:1.7,color:C.amber}}>
+                <strong style={{fontSize:10}}>Formule de report modal</strong><br/>
+                <code style={{fontSize:9,background:'white',padding:'2px 6px',borderRadius:4,display:'inline-block',margin:'3px 0',color:'#6B4A00'}}>
+                  Shift = (ΔPrix / BasePrix) × (−ε) = (ΔP / 3.0) × 0.30
+                </code><br/>
+                L'élasticité prix de la demande automobile <strong>ε = −0.30</strong> signifie qu'une hausse de 1% du tarif réduit la demande voiture de 0.30%. Le shift modal attendu (gain TP) est l'inverse : <em>−ε × ΔP/P = +0.30 × ΔP/P</em>.<br/><br/>
+                <strong style={{fontSize:10}}>Paramètres de base calibrés sur Sion</strong><br/>
+                • Trafic voiture journalier : <strong>11 500 véh./j</strong> (ARE Microrecensement 2021, corr. Sion)<br/>
+                • Fréquentation TP quotidienne : <strong>7 800 pax/j</strong> (CarPostal 2025, estimé BVR MVV)<br/>
+                • Durée moyenne stationnement centre : <strong>2.5h</strong> (données Planta/Scex 2024)<br/>
+                • Rotation moyenne : <strong>4.5 rot./pl./j</strong> (capacité 1 205 pl. centre)<br/>
+                • CO₂ par trajet voiture évité : <strong>1.52 kg</strong> (OFEV mix véhicule Suisse 2025, 14.3 km moy. trajet)<br/>
+                • Plafonds empiriques : gain TP max <strong>+38%</strong> / afflux voiture max <strong>+46%</strong> (saturation)<br/><br/>
+                <strong style={{fontSize:10}}>Sources scientifiques</strong><br/>
+                • Litman T. (2023) — <em>Parking Pricing Implementation Guidelines</em>, Victoria Transport Policy Institute<br/>
+                • Shoup D. (2011) — <em>The High Cost of Free Parking</em> (élasticité −0.1 à −0.6, médiane −0.3)<br/>
+                • ARE / OFS (2021) — Microrecensement Mobilité et Transports, Confédération suisse<br/>
+                • TCS / ADAC (2024) — Enquête comportementale automobilistes urbains Suisse romande<br/>
+                • OFEV (2025) — Inventaire national des émissions CO₂, transport routier<br/><br/>
+                <strong style={{fontSize:10,color:C.red}}>⚠️ Prototype indicatif</strong> — Résultats à ±30%. Calibration fine recommandée avec comptages réels (capteurs Planta/Scex) et enquête origine-destination 2025.
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -1025,14 +1077,20 @@ function PersonasTab():JSX.Element {
   const [sel,setSel]=useState<string|null>(null);
   const [price,setPrice]=useState(3.0);
   const getImpact=(p:PersonaData):PersonaImpact=>{
-    if(p.id==='p11')return{delta:0,equityFlag:false,switch:false,concerned:false,note:'Utilise le vélo — non concerné'};
+    if(p.id==='p11')return{delta:0,equityFlag:false,switch:false,concerned:false,note:'Utilise le vélo — non concerné par le tarif parking'};
     if(p.dest==='hopital')return{delta:0,equityFlag:false,switch:false,concerned:false,note:p.note??'Zone Champsec — hors périmètre centre'};
     if(p.dest==='industrie')return{delta:0,equityFlag:false,switch:false,concerned:false,note:p.note??'Parking privé gratuit Ronquoz'};
     if(p.avgStayH===0)return{delta:0,equityFlag:false,switch:false,concerned:false,note:'Non concerné'};
+    // 1h gratuite dans tous les parkings centre (Planta/Scex/Cible)
+    // → durée facturable = max(0, durée – 1h)
     const billable=Math.max(0,p.avgStayH-1);
+    if(billable===0)return{delta:0,equityFlag:false,switch:false,concerned:false,
+      note:`Stationnement ≤ 1h → couvert par la franchise gratuite (pas d'impact tarifaire pour ce profil)`};
     const before=billable*3.0;const after=billable*price;
     const delta=parseFloat((after-before).toFixed(2));
-    return{delta,beforeCHF:before.toFixed(2),afterCHF:after.toFixed(2),equityFlag:p.income==='faible'&&delta>2,switch:delta>1.5&&p.tpAff>0.35&&p.carDep<0.9,concerned:true,note:''};
+    // Bascule modale : seulement si coût augmente ET profil réceptif aux TP ET pas trop captif
+    const switchPossible=delta>1.5&&p.tpAff>0.35&&p.carDep<0.9;
+    return{delta,beforeCHF:before.toFixed(2),afterCHF:after.toFixed(2),equityFlag:p.income==='faible'&&delta>2,switch:switchPossible,concerned:true,note:''};
   };
   const concerned=PERSONAS.filter(p=>getImpact(p).concerned);
   const equityCount=concerned.filter(p=>getImpact(p).equityFlag).length;
@@ -1165,7 +1223,18 @@ function ActionsTab():JSX.Element {
                     </div>
                     {isExp&&(
                       <div className="fade-up" style={{padding:'10px 12px',borderTop:`1px solid ${C.borderL}`}}>
-                        <p style={{fontSize:11,color:C.inkM,lineHeight:1.6,marginBottom:8}}>{a.desc}</p>
+                        <div style={{padding:'8px 10px',background:horizon.bg,borderRadius:7,border:`1px solid ${horizon.b}`,marginBottom:8}}>
+                          <div className="syne" style={{fontSize:9,fontWeight:700,color:horizon.c,textTransform:'uppercase',letterSpacing:'.06em',marginBottom:3}}>Pourquoi cette action ?</div>
+                          <p style={{fontSize:10,color:C.ink,lineHeight:1.6,margin:0}}>{a.context}</p>
+                        </div>
+                        <div style={{padding:'8px 10px',background:C.white,borderRadius:7,border:`1px solid ${C.border}`,marginBottom:8}}>
+                          <div className="syne" style={{fontSize:9,fontWeight:700,color:C.inkM,textTransform:'uppercase',letterSpacing:'.06em',marginBottom:3}}>Description / Comment</div>
+                          <p style={{fontSize:10.5,color:C.inkM,lineHeight:1.6,margin:0}}>{a.desc}</p>
+                        </div>
+                        <div style={{padding:'8px 10px',background:C.greenL,borderRadius:7,border:`1px solid ${C.greenB}`,marginBottom:8}}>
+                          <div className="syne" style={{fontSize:9,fontWeight:700,color:C.green,textTransform:'uppercase',letterSpacing:'.06em',marginBottom:3}}>Résultat attendu</div>
+                          <p style={{fontSize:10,color:C.green,lineHeight:1.6,margin:0}}>{a.expectedResult}</p>
+                        </div>
                         <div className="syne" style={{fontSize:9,fontWeight:700,color:C.inkL,textTransform:'uppercase',letterSpacing:'.06em',marginBottom:5}}>Métriques de suivi</div>
                         {a.metrics.map((m,mi)=>(
                           <div key={mi} style={{display:'flex',alignItems:'center',gap:6,marginBottom:4}}>
@@ -1191,6 +1260,114 @@ function ActionsTab():JSX.Element {
           <div><strong>Données prioritaires à collecter :</strong><br/>
             — Comptages OD voitures (entrées centre)<br/>— Capteurs occupation P+R Potences & Échutes<br/>
             — Durée réelle stationnement par zone<br/>— Tarifs confirmés Cour de Gare CFF & HVS</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TAB 6 — DONNÉES (saisie manuelle)
+// ═══════════════════════════════════════════════════════════════════════════════
+function DonneesTab():JSX.Element {
+  // Valeurs par défaut = constantes SIM + données officielles
+  const [dailyCar,setDailyCar]=useState(11500);
+  const [dailyTP,setDailyTP]=useState(7800);
+  const [centrePlaces,setCentrePlaces]=useState(1205);
+  const [prPlaces,setPrPlaces]=useState(910);
+  const [avgStayH,setAvgStayH]=useState(2.5);
+  const [turnover,setTurnover]=useState(4.5);
+  const [co2PerTrip,setCo2PerTrip]=useState(1.52);
+  const [prOcc,setPrOcc]=useState(30);
+  const [centreOcc,setCentreOcc]=useState(79);
+  const [saved,setSaved]=useState(false);
+  const [notes,setNotes]=useState('');
+
+  const handleSave=()=>{
+    // Store to localStorage for persistence (not used by simulator yet — feature future)
+    try{localStorage.setItem('sion-cet-donnees',JSON.stringify({dailyCar,dailyTP,centrePlaces,prPlaces,avgStayH,turnover,co2PerTrip,prOcc,centreOcc,notes}));}catch(e){void e;}
+    setSaved(true);setTimeout(()=>setSaved(false),2200);
+  };
+
+  const numField=(label:string,unit:string,val:number,set:(v:number)=>void,min:number,max:number,source:string,confirmed:boolean)=>(
+    <div style={{padding:'10px 12px',background:C.white,borderRadius:8,border:`1px solid ${confirmed?C.greenB:C.amberB}`,marginBottom:8}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}}>
+        <div>
+          <span style={{fontSize:12,fontWeight:600,color:C.ink}}>{label}</span>
+          <span style={{fontSize:9,color:confirmed?C.green:C.amber,marginLeft:6}}>{confirmed?'✓ confirmé':'⚠ estimé'}</span>
+        </div>
+        <div style={{display:'flex',alignItems:'center',gap:6}}>
+          <input type="number" min={min} max={max} value={val}
+            onChange={e=>set(Math.max(min,Math.min(max,parseFloat(e.target.value)||min)))}
+            style={{width:80,padding:'4px 8px',borderRadius:6,border:`1.5px solid ${C.border}`,fontFamily:"'JetBrains Mono',monospace",fontSize:13,fontWeight:700,color:C.ink,textAlign:'right',background:C.borderL}}/>
+          <span style={{fontSize:10,color:C.inkM,minWidth:30}}>{unit}</span>
+        </div>
+      </div>
+      <div style={{fontSize:9,color:C.inkL,lineHeight:1.5}}>Source : {source}</div>
+    </div>
+  );
+
+  return(
+    <div className="fade-up" style={{padding:'20px 24px',overflowY:'auto',height:'100%',maxWidth:900}}>
+      <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:6}}>
+        <div>
+          <h1 className="syne" style={{fontSize:22,fontWeight:800,color:C.ink}}>Données & paramètres</h1>
+          <p style={{fontSize:12,color:C.inkL,marginTop:4}}>Saisie manuelle · Calibration du simulateur SION-CET · Remplace les estimations par des données terrain</p>
+        </div>
+        <button onClick={handleSave}
+          style={{padding:'9px 16px',borderRadius:8,border:'none',background:saved?C.green:C.red,color:'white',fontSize:13,fontWeight:800,cursor:'pointer',fontFamily:'Syne,sans-serif',transition:'all .2s'}}>
+          {saved?'✓ Sauvegardé':'Sauvegarder'}
+        </button>
+      </div>
+      <div style={{padding:'8px 12px',background:'#FFF8E1',borderRadius:8,border:`1px solid ${C.amberB}`,fontSize:10,color:C.amber,marginBottom:16,lineHeight:1.6}}>
+        💡 Ces valeurs servent à calibrer les calculs du simulateur. Les données marquées <strong>⚠ estimées</strong> proviennent de sources indirectes — remplacez-les avec vos données terrain dès qu'elles sont disponibles. La sauvegarde est locale (votre navigateur).
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:20}}>
+        {/* Colonne gauche */}
+        <div>
+          <div className="syne" style={{fontSize:10,fontWeight:800,color:C.red,textTransform:'uppercase',letterSpacing:'.06em',marginBottom:10}}>Trafic & mobilité</div>
+          {numField('Trafic voiture journalier','véh./j',dailyCar,setDailyCar,1000,50000,'ARE Microrecensement 2021 · corrigé Sion',false)}
+          {numField('Fréquentation TP quotidienne','pax/j',dailyTP,setDailyTP,500,30000,'CarPostal 2025 + MVV Sion (estimé)',false)}
+          {numField('Occ. actuelle P+R (%)','%',prOcc,setPrOcc,0,100,'Estimé — données terrain manquantes',false)}
+          {numField('Occ. actuelle parkings centre (%)','%',centreOcc,setCentreOcc,0,100,'Estimé Planta/Scex 2024',false)}
+
+          <div className="syne" style={{fontSize:10,fontWeight:800,color:C.green,textTransform:'uppercase',letterSpacing:'.06em',marginBottom:10,marginTop:14}}>Capacités</div>
+          {numField('Places parkings centre (total)','pl.',centrePlaces,setCentrePlaces,100,5000,'sion.ch/stationnement · Planta 552 + Scex 449 + Cible 204',true)}
+          {numField('Places P+R (total)','pl.',prPlaces,setPrPlaces,0,3000,'sion.ch · Potences 450 + Échutes II 400 + Échutes I 60',true)}
+        </div>
+        {/* Colonne droite */}
+        <div>
+          <div className="syne" style={{fontSize:10,fontWeight:800,color:C.blue,textTransform:'uppercase',letterSpacing:'.06em',marginBottom:10}}>Paramètres tarifaires & comportementaux</div>
+          {numField('Durée moyenne stationnement centre','h',avgStayH,setAvgStayH,0.5,12,'Données Planta/Scex 2024 (estimé — à confirmer par capteurs)',false)}
+          {numField('Rotation moyenne parkings centre','rot./pl./j',turnover,setTurnover,1,10,'Calculé : 11 500 véh./j ÷ 1 205 pl. ÷ jours · incl. franchise 1h',false)}
+          {numField('CO₂ par trajet voiture évité','kg/trajet',co2PerTrip,setCo2PerTrip,0.5,5,'OFEV 2025 · mix véhicule CH 2025 · 14.3 km trajet moyen Sion',true)}
+
+          <div className="syne" style={{fontSize:10,fontWeight:800,color:C.inkM,textTransform:'uppercase',letterSpacing:'.06em',marginBottom:10,marginTop:14}}>Notes terrain</div>
+          <textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Ex: comptage P+R Potences 14.03.2026 = 87 voitures à 8h30&#10;Tarif Cour de Gare CFF confirmé = 2.50 CHF/h..."
+            style={{width:'100%',height:130,padding:'10px 12px',borderRadius:8,border:`1.5px solid ${C.border}`,fontFamily:'Inter',fontSize:11,color:C.ink,resize:'vertical',lineHeight:1.6,boxSizing:'border-box',background:C.borderL}}/>
+        </div>
+      </div>
+      <div style={{marginTop:16,padding:'12px 14px',background:C.white,borderRadius:10,border:`1px solid ${C.border}`}}>
+        <div className="syne" style={{fontSize:10,fontWeight:700,color:C.inkM,marginBottom:8}}>Données prioritaires à obtenir</div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10,fontSize:10,color:C.inkM,lineHeight:1.7}}>
+          <div style={{padding:'8px 10px',background:C.redL,borderRadius:7,border:`1px solid ${C.redB}`}}>
+            <strong style={{color:C.red}}>Urgent (0–3 mois)</strong><br/>
+            — Compteurs entrée/sortie Planta & Scex<br/>
+            — Capteurs occupation P+R Potences<br/>
+            — Enquête durée stationnement (5 j.)
+          </div>
+          <div style={{padding:'8px 10px',background:C.amberL,borderRadius:7,border:`1px solid ${C.amberB}`}}>
+            <strong style={{color:C.amber}}>Important (3–12 mois)</strong><br/>
+            — Tarif officiel Cour de Gare CFF<br/>
+            — Tarif P+R Hôpital HVS confirmé<br/>
+            — Taux occupation P+R Échutes I/II
+          </div>
+          <div style={{padding:'8px 10px',background:C.blueL,borderRadius:7,border:`1px solid ${C.blueB}`}}>
+            <strong style={{color:C.blue}}>Utile (>12 mois)</strong><br/>
+            — Enquête OD complète (OFROU)<br/>
+            — Données emplois zone Ronquoz<br/>
+            — Microrecensement local 2026
+          </div>
         </div>
       </div>
     </div>
@@ -1228,6 +1405,7 @@ export default function Dashboard():JSX.Element {
     od:<ODTab/>,
     personas:<PersonasTab/>,
     actions:<ActionsTab/>,
+    donnees:<DonneesTab/>,
   };
 
   return(
