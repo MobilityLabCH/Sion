@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Éditeur de Parkings — Sion CET</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; height: 100vh; display: flex; flex-direction: column; }
+
+  header {
+    background: #1e293b;
+    border-bottom: 1px solid #334155;
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-shrink: 0;
+  }
+  header .logo { background: #ef4444; color: white; font-weight: 800; font-size: 13px; padding: 4px 8px; border-radius: 6px; }
+  header h1 { font-size: 15px; font-weight: 600; color: #f1f5f9; }
+  header p { font-size: 12px; color: #94a3b8; margin-left: auto; }
+
+  .main { display: flex; flex: 1; overflow: hidden; }
+
+  #map { flex: 1; }
+
+  .sidebar {
+    width: 300px;
+    background: #1e293b;
+    border-left: 1px solid #334155;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  .sidebar-header {
+    padding: 14px 16px;
+    border-bottom: 1px solid #334155;
+    background: #0f172a;
+  }
+  .sidebar-header h2 { font-size: 13px; font-weight: 700; color: #f1f5f9; text-transform: uppercase; letter-spacing: 0.05em; }
+  .sidebar-header p { font-size: 11px; color: #64748b; margin-top: 3px; }
+
+  .parking-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+  }
+
+  .parking-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s;
+    border: 1px solid transparent;
+  }
+  .parking-item:hover { background: #334155; }
+  .parking-item.active { background: #1d4ed8; border-color: #3b82f6; }
+
+  .parking-dot {
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    border: 2px solid rgba(255,255,255,0.3);
+  }
+
+  .parking-info { flex: 1; min-width: 0; }
+  .parking-name { font-size: 12px; font-weight: 600; color: #f1f5f9; }
+  .parking-cap { font-size: 11px; color: #94a3b8; }
+  .parking-coords { font-size: 10px; color: #475569; font-family: monospace; margin-top: 2px; }
+
+  .parking-type-label {
+    font-size: 10px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+  .type-centre { background: #7f1d1d; color: #fca5a5; }
+  .type-pr { background: #14532d; color: #86efac; }
+
+  .section-title {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #475569;
+    padding: 10px 10px 4px;
+  }
+
+  .actions {
+    padding: 12px;
+    border-top: 1px solid #334155;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .btn {
+    padding: 9px 14px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    transition: all 0.15s;
+    text-align: center;
+  }
+  .btn-primary { background: #2563eb; color: white; }
+  .btn-primary:hover { background: #1d4ed8; }
+  .btn-success { background: #16a34a; color: white; }
+  .btn-success:hover { background: #15803d; }
+  .btn-ghost { background: #334155; color: #94a3b8; }
+  .btn-ghost:hover { background: #475569; color: #e2e8f0; }
+
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(60px);
+    background: #16a34a;
+    color: white;
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    transition: transform 0.3s ease;
+    z-index: 9999;
+    pointer-events: none;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  .instructions {
+    background: #0f172a;
+    border: 1px solid #1e40af;
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin: 8px;
+    font-size: 11px;
+    color: #93c5fd;
+    line-height: 1.6;
+  }
+  .instructions strong { color: #bfdbfe; }
+
+  /* Custom marker styles */
+  .parking-marker {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50% 50% 50% 0;
+    transform: rotate(-45deg);
+    border: 2px solid white;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    cursor: grab;
+  }
+  .parking-marker:active { cursor: grabbing; }
+  .parking-marker span {
+    transform: rotate(45deg);
+    font-size: 9px;
+    font-weight: 800;
+    color: white;
+    text-align: center;
+    line-height: 1;
+    max-width: 22px;
+  }
+
+  .reset-btn { font-size: 10px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">VS</div>
+  <div>
+    <h1>Éditeur de positions — Parkings Sion</h1>
+  </div>
+  <p>🖱️ Glissez chaque marqueur à sa position exacte</p>
+</header>
+
+<div class="main">
+  <div id="map"></div>
+
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <h2>Parkings (11)</h2>
+      <p>Cliquez sur un parking pour le centrer</p>
+    </div>
+
+    <div class="instructions">
+      <strong>Comment utiliser :</strong><br>
+      1. Glissez les marqueurs sur la carte<br>
+      2. Zoomez pour préciser les positions<br>
+      3. Cliquez <em>Copier le code TypeScript</em><br>
+      4. Collez dans <code>Dashboard.tsx</code>
+    </div>
+
+    <div class="parking-list" id="parkingList"></div>
+
+    <div class="actions">
+      <button class="btn btn-success" onclick="copyTypeScript()">📋 Copier le code TypeScript</button>
+      <button class="btn btn-primary" onclick="copyJSON()">{ } Copier les coordonnées JSON</button>
+      <button class="btn btn-ghost reset-btn" onclick="resetPositions()">↺ Réinitialiser les positions</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+const DEFAULT_PARKINGS = [
+  // Centre-ville
+  { id: 'planta',       name: 'P Planta',       type: 'centre', capacity: 552, lat: 46.2340, lng: 7.3598, tarif: '3.0 CHF/h', gratuit: '1h gratuite', color: '#ef4444' },
+  { id: 'scex',         name: 'P Scex',          type: 'centre', capacity: 449, lat: 46.2325, lng: 7.3615, tarif: '3.0 CHF/h', gratuit: '1h gratuite', color: '#ef4444' },
+  { id: 'cible',        name: 'P Cible',         type: 'centre', capacity: 204, lat: 46.2368, lng: 7.3518, tarif: '3.0 CHF/h', gratuit: '1h gratuite', color: '#ef4444' },
+  { id: 'nord',         name: 'P Nord',          type: 'centre', capacity: 282, lat: 46.2380, lng: 7.3535, tarif: 'Préférentiel', gratuit: '', color: '#f97316' },
+  { id: 'roches',       name: 'Roches-Brunes',   type: 'centre', capacity: 300, lat: 46.2358, lng: 7.3678, tarif: 'Préférentiel', gratuit: '', color: '#f97316' },
+  { id: 'stguerin',     name: 'St-Guérin',       type: 'centre', capacity: 66,  lat: 46.2328, lng: 7.3548, tarif: 'Préférentiel', gratuit: '', color: '#f97316' },
+  { id: 'vissigen',     name: 'Vissigen',         type: 'centre', capacity: 23,  lat: 46.2290, lng: 7.3682, tarif: 'Préférentiel', gratuit: '', color: '#f97316' },
+  { id: 'courgare',     name: 'Cour de Gare CFF', type: 'centre', capacity: 300, lat: 46.2298, lng: 7.3588, tarif: 'À confirmer', gratuit: '', color: '#8b5cf6' },
+  // P+R
+  { id: 'potences',     name: 'P+R Potences',    type: 'pr', capacity: 450, lat: 46.2245, lng: 7.3528, tarif: 'GRATUIT', gratuit: 'GRATUIT', color: '#22c55e' },
+  { id: 'echutes2',     name: 'P+R Échutes II',  type: 'pr', capacity: 400, lat: 46.2362, lng: 7.3758, tarif: 'GRATUIT', gratuit: 'GRATUIT', color: '#22c55e' },
+  { id: 'echutes1',     name: 'P+R Échutes I',   type: 'pr', capacity: 60,  lat: 46.2370, lng: 7.3778, tarif: 'GRATUIT', gratuit: 'GRATUIT', color: '#22c55e' },
+];
+
+// Load saved positions from localStorage
+function loadParkings() {
+  try {
+    const saved = localStorage.getItem('sion_parking_positions');
+    if (saved) {
+      const savedData = JSON.parse(saved);
+      return DEFAULT_PARKINGS.map(p => {
+        const s = savedData.find(x => x.id === p.id);
+        return s ? { ...p, lat: s.lat, lng: s.lng } : p;
+      });
+    }
+  } catch(e) {}
+  return DEFAULT_PARKINGS.map(p => ({...p}));
+}
+
+function saveParkings() {
+  localStorage.setItem('sion_parking_positions', JSON.stringify(
+    parkings.map(p => ({ id: p.id, lat: p.lat, lng: p.lng }))
+  ));
+}
+
+let parkings = loadParkings();
+let markers = {};
+let activeId = null;
+
+// Init map
+const map = L.map('map', {
+  center: [46.2330, 7.3600],
+  zoom: 14,
+  zoomControl: true,
+});
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© OpenStreetMap contributors',
+  maxZoom: 19,
+}).addTo(map);
+
+function createIcon(p, isActive) {
+  const bg = p.type === 'pr' ? p.color : p.color;
+  const label = p.name.replace('P+R ', '').replace('P ', '').substring(0, 5);
+  return L.divIcon({
+    className: '',
+    html: `<div style="
+      background:${bg};
+      width:${isActive ? 38 : 32}px;
+      height:${isActive ? 38 : 32}px;
+      border-radius:50% 50% 50% 0;
+      transform:rotate(-45deg);
+      border: 2px solid white;
+      box-shadow: 0 2px ${isActive ? 12 : 6}px rgba(0,0,0,${isActive ? 0.6 : 0.35});
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      cursor:grab;
+    ">
+      <span style="
+        transform:rotate(45deg);
+        font-size:8px;
+        font-weight:800;
+        color:white;
+        text-align:center;
+        max-width:24px;
+        line-height:1.1;
+        pointer-events:none;
+      ">${p.type === 'pr' ? 'P+R' : 'P'}</span>
+    </div>`,
+    iconSize: [isActive ? 38 : 32, isActive ? 38 : 32],
+    iconAnchor: [isActive ? 19 : 16, isActive ? 38 : 32],
+    popupAnchor: [0, -32],
+  });
+}
+
+function renderList() {
+  const list = document.getElementById('parkingList');
+  const centres = parkings.filter(p => p.type === 'centre');
+  const prs = parkings.filter(p => p.type === 'pr');
+
+  let html = '<div class="section-title">🔴 Centre-ville</div>';
+  centres.forEach(p => {
+    html += `<div class="parking-item ${activeId === p.id ? 'active' : ''}" onclick="focusParking('${p.id}')">
+      <div class="parking-dot" style="background:${p.color}"></div>
+      <div class="parking-info">
+        <div class="parking-name">${p.name}</div>
+        <div class="parking-cap">${p.capacity} pl. · ${p.tarif}</div>
+        <div class="parking-coords" id="coords_${p.id}">${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}</div>
+      </div>
+      <span class="parking-type-label type-centre">CV</span>
+    </div>`;
+  });
+
+  html += '<div class="section-title">🟢 P+R Périphérie</div>';
+  prs.forEach(p => {
+    html += `<div class="parking-item ${activeId === p.id ? 'active' : ''}" onclick="focusParking('${p.id}')">
+      <div class="parking-dot" style="background:${p.color}"></div>
+      <div class="parking-info">
+        <div class="parking-name">${p.name}</div>
+        <div class="parking-cap">${p.capacity} pl. · ${p.tarif}</div>
+        <div class="parking-coords" id="coords_${p.id}">${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}</div>
+      </div>
+      <span class="parking-type-label type-pr">P+R</span>
+    </div>`;
+  });
+
+  list.innerHTML = html;
+}
+
+function addMarker(p) {
+  const marker = L.marker([p.lat, p.lng], {
+    draggable: true,
+    icon: createIcon(p, false),
+    zIndexOffset: p.type === 'pr' ? 100 : 200,
+  }).addTo(map);
+
+  marker.bindTooltip(`<strong>${p.name}</strong><br>${p.capacity} pl. · ${p.tarif}`, {
+    permanent: false,
+    direction: 'top',
+    offset: [0, -30],
+  });
+
+  marker.on('dragstart', () => {
+    activeId = p.id;
+    marker.setIcon(createIcon(p, true));
+    renderList();
+  });
+
+  marker.on('drag', (e) => {
+    const { lat, lng } = e.latlng;
+    p.lat = lat;
+    p.lng = lng;
+    const el = document.getElementById(`coords_${p.id}`);
+    if (el) el.textContent = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+  });
+
+  marker.on('dragend', (e) => {
+    const { lat, lng } = e.latlng;
+    p.lat = lat;
+    p.lng = lng;
+    marker.setIcon(createIcon(p, false));
+    saveParkings();
+    renderList();
+    showToast(`✅ ${p.name} repositionné`);
+  });
+
+  marker.on('click', () => {
+    activeId = p.id;
+    renderList();
+  });
+
+  markers[p.id] = marker;
+}
+
+function focusParking(id) {
+  const p = parkings.find(x => x.id === id);
+  if (!p) return;
+  activeId = id;
+  map.flyTo([p.lat, p.lng], 16, { duration: 0.8 });
+  Object.keys(markers).forEach(k => {
+    markers[k].setIcon(createIcon(parkings.find(x => x.id === k), k === id));
+  });
+  renderList();
+}
+
+function resetPositions() {
+  if (!confirm('Réinitialiser toutes les positions aux valeurs par défaut ?')) return;
+  DEFAULT_PARKINGS.forEach(def => {
+    const p = parkings.find(x => x.id === def.id);
+    if (p) {
+      p.lat = def.lat;
+      p.lng = def.lng;
+      markers[p.id].setLatLng([p.lat, p.lng]);
+    }
+  });
+  localStorage.removeItem('sion_parking_positions');
+  renderList();
+  showToast('↺ Positions réinitialisées');
+}
+
+function copyJSON() {
+  const data = parkings.map(p => ({
+    id: p.id,
+    name: p.name,
+    lat: parseFloat(p.lat.toFixed(5)),
+    lng: parseFloat(p.lng.toFixed(5)),
+  }));
+  navigator.clipboard.writeText(JSON.stringify(data, null, 2));
+  showToast('✅ JSON copié dans le presse-papiers !');
+}
+
+function copyTypeScript() {
+  const lines = parkings.map(p => {
+    return `  { id: '${p.id}', name: '${p.name}', type: '${p.type}', capacity: ${p.capacity}, lat: ${p.lat.toFixed(5)}, lng: ${p.lng.toFixed(5)}, tarif: '${p.tarif}', color: '${p.color}' },`;
+  });
+
+  const ts = `// ===== COORDONNÉES PARKINGS SION — mise à jour ${new Date().toLocaleDateString('fr-CH')} =====
+// Copiez ce bloc dans Dashboard.tsx, tableau parkingData[]
+
+const parkingData = [
+${lines.join('\n')}
+];`;
+
+  navigator.clipboard.writeText(ts);
+  showToast('✅ Code TypeScript copié ! Collez dans Dashboard.tsx');
+}
+
+function showToast(msg) {
+  const toast = document.getElementById('toast');
+  toast.textContent = msg;
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 2800);
+}
+
+// Init
+parkings.forEach(p => addMarker(p));
+renderList();
+
+// Add scale
+L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(map);
+</script>
+</body>
+</html>
