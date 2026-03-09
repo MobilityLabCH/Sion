@@ -54,7 +54,8 @@ const DEST_EMOJI: Record<Destination, string> = {
 
 const PR_NODES: Record<string, { label: string; coords: [number, number]; cap: number; busMin: number }> = {
   potences: { label: 'P+R Potences', coords: [7.3240, 46.2268], cap: 450, busMin: 12 },
-  stade:    { label: 'P+R Stade',    coords: [7.3840, 46.2330], cap: 460, busMin: 10 },
+  echutes2: { label: 'P+R Échutes II', coords: [7.3840, 46.2330], cap: 400, busMin: 10 },
+  echutes1: { label: 'P+R Échutes I',  coords: [7.3820, 46.2310], cap: 60,  busMin: 12 },
 };
 
 const CAP_COLOR: Record<CaptClass, string> = {
