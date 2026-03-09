@@ -17,7 +17,7 @@ import { BASELINE_SCENARIO } from '../types';
 const PARKING_TABLE = [
   {
     name: 'Parking de la Planta',
-    type: 'Couvert', zone: 'Centre', places: 562,
+    type: 'Couvert', zone: 'Centre', places: 552,
     pricePeak: 'CHF 3.00/h', priceOff: 'CHF 3.00/h',
     freeRules: '1h gratuite · gratuit 12h-13h30 · ven.17h-sam.24h · nuits · dim.',
     aboPendulaire: 'CHF 160/mois',
@@ -27,7 +27,7 @@ const PARKING_TABLE = [
   },
   {
     name: 'Parking du Scex',
-    type: 'Couvert', zone: 'Centre', places: 658,
+    type: 'Couvert', zone: 'Centre', places: 449,
     pricePeak: 'CHF 3.00/h', priceOff: 'CHF 3.00/h',
     freeRules: '1h gratuite · gratuit 12h-13h30 · ven.17h-sam.24h · nuits · dim.',
     aboPendulaire: 'CHF 160/mois',
@@ -47,7 +47,7 @@ const PARKING_TABLE = [
   },
   {
     name: 'Parking Roches-Brunes',
-    type: 'Couvert', zone: 'Pericentre Est', places: 370,
+    type: 'Couvert', zone: 'Pericentre Est', places: 300,
     pricePeak: '~CHF 1.50/h', priceOff: '~CHF 1.50/h',
     freeRules: 'Tarif preferentiel · details a confirmer',
     aboPendulaire: 'N/D',
@@ -86,7 +86,7 @@ const PARKING_TABLE = [
     source: 'sion.ch · CarPostal 2025', confidence: 'Officiel',
   },
   {
-    name: 'P+R Stade / Echutes',
+    name: 'P+R Échutes II / Echutes',
     type: 'P+R', zone: 'Peripherie Est', places: 460,
     pricePeak: 'GRATUIT', priceOff: 'GRATUIT',
     freeRules: 'Gratuit permanence · BS 11 toutes 10 min',
@@ -259,7 +259,7 @@ export default function ScenarioBuilder() {
   if (scenario.enableTAD) changedParams.push('TAD');
   if (scenario.enableTaxiBons) changedParams.push('Taxi-bons');
 
-  const totalCentreCapacity = 562 + 658 + 204;
+  const totalCentreCapacity = 552 + 449 + 204;
   const revEstimate = scenario.centrePeakPriceCHFh === 0
     ? 0
     : Math.round(totalCentreCapacity * 4.5 * Math.max(0, 2.5 - 1) * scenario.centrePeakPriceCHFh);
