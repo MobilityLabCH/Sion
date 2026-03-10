@@ -17,20 +17,36 @@ const WORKER_URL = 'https://sion.ericimstepf.workers.dev';
 interface TrafficFlowResp {
   connected: boolean;
   severity?: string;
-  congestionIdx?: number;
-  currentSpeed?: number;
-  freeFlowSpeed?: number;
+  congestionIdx?: number;   // 0–100 : (1 − v_curr/v_free) × 100
+  currentSpeed?: number;    // km/h
+  freeFlowSpeed?: number;   // km/h
+  confidence?: number;      // 0–1
+  area?: string;
+  timestamp?: string;
   error?: string;
 }
 
-async function fetchTomTomSev(): Promise<{sev:string;ok:boolean}> {
+// Contexte TomTom passé au moteur de simulation
+interface TomTomCtx {
+  congestionIdx: number;
+  currentSpeed: number;
+  freeFlowSpeed: number;
+  confidence: number;
+  severity: string;
+}
+
+async function fetchTomTom(): Promise<{sev:string;ok:boolean;ctx:TomTomCtx|null}> {
   try {
     const r = await fetch(`${WORKER_URL}/api/traffic/flow`, {cache:'no-store'});
-    if (!r.ok) return {sev:'',ok:false};
+    if (!r.ok) return {sev:'',ok:false,ctx:null};
     const d = await r.json() as TrafficFlowResp;
-    if (!d.connected || !d.severity) return {sev:'',ok:false};
-    return {sev:d.severity,ok:true};
-  } catch { return {sev:'',ok:false}; }
+    if (!d.connected || !d.severity) return {sev:'',ok:false,ctx:null};
+    const ctx: TomTomCtx|null = (d.congestionIdx!=null && d.currentSpeed!=null && d.freeFlowSpeed!=null)
+      ? {congestionIdx:d.congestionIdx, currentSpeed:d.currentSpeed,
+         freeFlowSpeed:d.freeFlowSpeed, confidence:d.confidence??1, severity:d.severity}
+      : null;
+    return {sev:d.severity, ok:true, ctx};
+  } catch { return {sev:'',ok:false,ctx:null}; }
 }
 
 // ─── CSS ──────────────────────────────────────────────────────────────────────
@@ -115,6 +131,8 @@ interface SimResult {
   revenueDay:number; baseRevenue:number; revDelta:number;
   centreOcc:number; congestion:number; tpRevenueEffect:number;
   isNegative:boolean;
+  // TomTom calibration metadata
+  ttAdjusted:boolean; ttMult:number; effElast:number; ci:number;
 }
 interface PersonaData {
   id:string; emoji:string; label:string; income:IncomeType;
@@ -267,14 +285,33 @@ function getSionEvents(): SionEvent[] {
 const SIM={dailyCar:11500,dailyTP:7800,centrePlaces:CENTRE_TOTAL,prPlaces:910,
   avgStayH:2.5,freeH:1.0,turnover:4.5,co2PerTrip:1.52,elasticity:-0.30,basePrice:3.0} as const;
 
-function simulate(p:SimParams):SimResult {
+function simulate(p:SimParams, tt?:TomTomCtx|null):SimResult {
   const delta=p.centrePrice-SIM.basePrice;
-  // Élasticité-prix de la demande voiture : ε = -0.30 (Litman 2023, ARE 2021)
-  // Interprétation : +1% de prix → -0.30% de demande voiture
-  // Shift modal vers TP = -(ε × ΔP/P) = -(-0.30) × ΔP/P = +0.30 × ΔP/P
-  // → positif quand prix augmente (moins de voitures → gain TP) ✓
-  // → négatif quand prix baisse / gratuit (plus de voitures → perte TP) ✓
-  const raw=(delta/SIM.basePrice)*(-SIM.elasticity); // = (delta/3.0)*0.30
+
+  // ── TomTom calibration ──────────────────────────────────────────────────────
+  // Quand la congestion est réelle et mesurée, les conducteurs sont plus sensibles
+  // au prix (coût généralisé déjà élevé → seuil de bascule plus bas).
+  // Litman 2023 : élasticité augmente de ~10–40% en conditions congestionnées.
+  // Formule : ε_eff = ε_base × (1 + congestionIdx / 200)
+  //   ci=0  (fluide) → ×1.00 → ε=0.300
+  //   ci=40 (modéré) → ×1.20 → ε=0.360
+  //   ci=70 (dense)  → ×1.35 → ε=0.405
+  //   ci=90 (bloqué) → ×1.45 → ε=0.435 (plafonné à ε_max=0.45)
+  const ci=tt?.congestionIdx??0;
+  const ttMult=1+ci/200;
+  const effElast=Math.min(0.45, Math.abs(SIM.elasticity)*ttMult);
+
+  // CO₂ ajusté : trafic stop-and-go émet +5–20% vs flux libre (OFEV 2025)
+  // co2_eff = co2_base × (1 + ci/300)
+  const co2PerTripEff=SIM.co2PerTrip*(1+ci/300);
+
+  // Occupation de base en temps réel : congestion reflète la pression parking
+  // baseOcc = 65 (fluide) → 92 (bloqué), plafonné à 97
+  const baseOcc=tt?Math.min(97,Math.round(65+ci*0.30)):79;
+
+  // Élasticité-prix de la demande voiture : ε_eff (Litman 2023, ARE 2021, TomTom)
+  // Shift modal = (ΔPrix / BasePrix) × ε_eff
+  const raw=(delta/SIM.basePrice)*effElast;
   // Plafond empirique : gain TP max ~38%, afflux voiture max ~46% (saturation)
   const clamped=Math.max(-0.46,Math.min(0.38,raw));
   const tpE=p.tpDiscount>0?(p.tpDiscount/100)*0.08:0;
@@ -282,26 +319,25 @@ function simulate(p:SimParams):SimResult {
   const prE=p.prPrice===0&&delta>0?clamped*0.20:0;
   const combE=p.offreCombinee&&p.prPrice===0&&delta>0?0.028:0;
   const progE=p.progressif&&p.centrePrice>=SIM.basePrice?0.022:0;
-  const covE=0;
-  const tadE=0;
   // Fuite modale : parkings périphériques bon marché captent une partie
   // du report attendu (les usagers évitent le centre sans passer aux TP)
-  // Ne s'applique que quand le centre est PLUS cher (sinon pas de raison de fuir)
   const leak=delta>0?Math.max(0,(SIM.basePrice-p.gareCFFPrice)*0.01+(1.5-p.nordPrice)*0.008+(1.5-p.rochesBrunesPrice)*0.006):0;
-  const total=clamped+tpE+prE+combE+progE+covE+tadE-leak;
+  const total=clamped+tpE+prE+combE+progE-leak;
   const carsReduced=Math.round(SIM.dailyCar*Math.abs(total));
   const carSign=total<0?-1:1;
   const tpGain=Math.round(carsReduced*(0.65+(p.tpDiscount>0?0.07:0)))*carSign;
   const prUsage=delta>0?Math.round(carsReduced*0.22+prE*SIM.prPlaces*0.5):0;
-  const co2=Math.round(carsReduced*SIM.co2PerTrip)*carSign;
+  const co2=Math.round(carsReduced*co2PerTripEff)*carSign;
   const billable=Math.max(0,SIM.avgStayH-SIM.freeH);
   const revenueDay=Math.round(SIM.centrePlaces*SIM.turnover*billable*p.centrePrice);
   const baseRevenue=Math.round(SIM.centrePlaces*SIM.turnover*billable*SIM.basePrice);
-  const centreOcc=Math.min(98,Math.max(25,Math.round(79-total*110)));
+  const centreOcc=Math.min(98,Math.max(25,Math.round(baseOcc-total*110)));
   const congestion=p.centrePrice<SIM.basePrice?Math.min(4,Math.round((SIM.basePrice-p.centrePrice)*1.5)):0;
   return{totalShift:total,carsReduced,carSign,tpGain,prUsage,co2,revenueDay,baseRevenue,
-    revDelta:revenueDay-baseRevenue,centreOcc,congestion,tpRevenueEffect:p.tpDiscount>0?-(p.tpDiscount/100*0.15):0,
-    isNegative:total<0};
+    revDelta:revenueDay-baseRevenue,centreOcc,congestion,
+    tpRevenueEffect:p.tpDiscount>0?-(p.tpDiscount/100*0.15):0,
+    isNegative:total<0,
+    ttAdjusted:!!tt,ttMult,effElast,ci};
 }
 
 // ─── Static Data ──────────────────────────────────────────────────────────────
@@ -875,7 +911,7 @@ function DashboardTab():JSX.Element {
 // ═══════════════════════════════════════════════════════════════════════════════
 // TAB 2 — SIMULATEUR
 // ═══════════════════════════════════════════════════════════════════════════════
-function SimulatorTab():JSX.Element {
+function SimulatorTab({tomtomCtx}:{tomtomCtx:TomTomCtx|null}):JSX.Element {
   const [centrePrice,setCentrePrice]=useState(3.0);
   const [prPrice,setPrPrice]=useState(0.0);
   const [progressif,setProgressif]=useState(false);
@@ -894,11 +930,11 @@ function SimulatorTab():JSX.Element {
   const [simKey,setSimKey]=useState(0);
   const params:SimParams={centrePrice,prPrice,progressif,tpDiscount,offreCombinee,gareCFFPrice,nordPrice,rochesBrunesPrice,hopitalPrice};
   const baseParams:SimParams={centrePrice:3.0,prPrice:0,progressif:false,tpDiscount:0,offreCombinee:false,gareCFFPrice:2.0,nordPrice:1.5,rochesBrunesPrice:1.5,hopitalPrice:2.0};
-  const baseR=simulate(baseParams);
+  const baseR=simulate(baseParams,tomtomCtx);
   const hasChanged=centrePrice!==3.0||prPrice!==0||progressif||tpDiscount>0||offreCombinee||gareCFFPrice!==2.0||nordPrice!==1.5||rochesBrunesPrice!==1.5||hopitalPrice!==2.0;
   const runSim=useCallback(()=>{
     setIsRunning(true);
-    setTimeout(()=>{setSimResults(simulate(params));setSimKey(k=>k+1);setIsRunning(false);},550);
+    setTimeout(()=>{setSimResults(simulate(params,tomtomCtx));setSimKey(k=>k+1);setIsRunning(false);},550);
   },[centrePrice,prPrice,progressif,tpDiscount,offreCombinee,gareCFFPrice,nordPrice,rochesBrunesPrice,hopitalPrice]);
   const reset=useCallback(()=>{setCentrePrice(3.0);setPrPrice(0);setProgressif(false);setTpDiscount(0);setOffreCombinee(false);setGareCFFPrice(2.0);setNordPrice(1.5);setRochesBrunesPrice(1.5);setHopitalPrice(2.0);setSimResults(null);},[]);
   const R=simResults;
@@ -953,6 +989,34 @@ function SimulatorTab():JSX.Element {
               🚌 AG CFF (incl. TP Sion): <strong>CHF 3 860/an</strong>
             </div>
           </div>
+          {/* TomTom Live Context */}
+          {tomtomCtx&&(
+            <div style={{padding:'10px 12px',background:'#0F172A',borderRadius:10,border:'1.5px solid #1E3A5F',marginBottom:12}}>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
+                <div className="syne" style={{fontSize:9.5,fontWeight:800,color:'#60A5FA',textTransform:'uppercase',letterSpacing:'.06em'}}>
+                  🛰 TomTom Live · {tomtomCtx.severity}
+                </div>
+                <span style={{fontSize:8,color:'#1D4ED8',background:'#1E3A5F',padding:'1px 6px',borderRadius:10,fontWeight:700}}>
+                  ×{tomtomCtx.congestionIdx>0?(1+tomtomCtx.congestionIdx/200).toFixed(2):'1.00'} ε
+                </span>
+              </div>
+              {([
+                ['Vitesse actuelle',`${tomtomCtx.currentSpeed} km/h`,tomtomCtx.currentSpeed<tomtomCtx.freeFlowSpeed*0.6?C.red:tomtomCtx.currentSpeed<tomtomCtx.freeFlowSpeed*0.85?C.amber:C.green],
+                ['Vitesse fluide',`${tomtomCtx.freeFlowSpeed} km/h`,'#60A5FA'],
+                ['Congestion',`${tomtomCtx.congestionIdx}%`,tomtomCtx.congestionIdx>60?C.red:tomtomCtx.congestionIdx>30?C.amber:C.green],
+                ['Élasticité eff.',`ε = ${(tomtomCtx.congestionIdx>0?(Math.abs(-0.30)*(1+tomtomCtx.congestionIdx/200)):0.30).toFixed(3)}`,'#A78BFA'],
+              ] as [string,string,string][]).map(([l,v,c])=>(
+                <div key={l} style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}}>
+                  <span style={{fontSize:9,color:'#4A6080'}}>{l}</span>
+                  <span className="mono" style={{fontSize:9.5,fontWeight:800,color:c}}>{v}</span>
+                </div>
+              ))}
+              <div style={{marginTop:6,paddingTop:6,borderTop:'1px solid #1E3A5F',fontSize:8,color:'#2A4060',lineHeight:1.5}}>
+                Élasticité amplifiée par la congestion mesurée · Litman 2023
+              </div>
+            </div>
+          )}
+
           {/* Mesures comp */}
           <div style={{marginBottom:12}}>
             <div className="syne" style={{fontSize:10,fontWeight:700,color:C.inkL,textTransform:'uppercase',letterSpacing:'.06em',marginBottom:8}}>Mesures complémentaires</div>
@@ -1033,6 +1097,17 @@ function SimulatorTab():JSX.Element {
                 • Rotation moyenne : <strong>4.5 rot./pl./j</strong> (capacité 1 205 pl. centre)<br/>
                 • CO₂ par trajet voiture évité : <strong>1.52 kg</strong> (OFEV mix véhicule Suisse 2025, 14.3 km moy. trajet)<br/>
                 • Plafonds empiriques : gain TP max <strong>+38%</strong> / afflux voiture max <strong>+46%</strong> (saturation)<br/><br/>
+                <strong style={{fontSize:10}}>Calibration TomTom temps réel</strong><br/>
+                Quand TomTom est connecté, trois paramètres sont ajustés dynamiquement :<br/>
+                <code style={{fontSize:9,background:'white',padding:'2px 6px',borderRadius:4,display:'inline-block',margin:'2px 0',color:'#5B21B6'}}>
+                  ε_eff = 0.30 × (1 + CI / 200) · CI = indice congestion TomTom [0–100]
+                </code><br/>
+                <code style={{fontSize:9,background:'white',padding:'2px 6px',borderRadius:4,display:'inline-block',margin:'2px 0',color:'#065F46'}}>
+                  CO₂_eff = 1.52 × (1 + CI / 300) kg/trajet (stop-and-go)
+                </code><br/>
+                <code style={{fontSize:9,background:'white',padding:'2px 6px',borderRadius:4,display:'inline-block',margin:'2px 0',color:'#1E3A8A'}}>
+                  Occ_base = 65 + CI × 0.30 % (pression parking en temps réel)
+                </code><br/><br/>
                 <strong style={{fontSize:10}}>Sources scientifiques</strong><br/>
                 • Litman T. (2023) — <em>Parking Pricing Implementation Guidelines</em>, Victoria Transport Policy Institute<br/>
                 • Shoup D. (2011) — <em>The High Cost of Free Parking</em> (élasticité −0.1 à −0.6, médiane −0.3)<br/>
@@ -1048,7 +1123,10 @@ function SimulatorTab():JSX.Element {
       {/* RIGHT: RESULTS */}
       <div style={{width:272,background:C.white,borderLeft:`1px solid ${C.border}`,display:'flex',flexDirection:'column',overflow:'hidden',flexShrink:0}}>
         <div style={{padding:'12px 14px',borderBottom:`1px solid ${C.borderL}`,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-          <div className="syne" style={{fontSize:13,fontWeight:800,color:C.ink}}>{compareMode?'Comparaison':'Résultats'}</div>
+          <div style={{display:'flex',flexDirection:'column',gap:2}}>
+            <div className="syne" style={{fontSize:13,fontWeight:800,color:C.ink}}>{compareMode?'Comparaison':'Résultats'}</div>
+            {R?.ttAdjusted&&<div style={{fontSize:8,color:'#60A5FA',fontWeight:700}}>🛰 calibré TomTom · ε×{R.ttMult.toFixed(2)}</div>}
+          </div>
           {R&&<span className="mono" style={{fontSize:10,fontWeight:700,color:R.isNegative?C.red:C.green,background:R.isNegative?C.redL:C.greenL,padding:'2px 8px',borderRadius:20,border:`1px solid ${R.isNegative?C.redB:C.greenB}`}}>
             {R.isNegative?'-':''}{(Math.abs(R.totalShift)*100).toFixed(1)}% report
           </span>}
@@ -1528,6 +1606,7 @@ export default function Dashboard():JSX.Element {
   },[]);
 
   const [tomtomOk,setTomtomOk]=useState<boolean|null>(null);
+  const [tomtomCtx,setTomtomCtx]=useState<TomTomCtx|null>(null);
 
   useEffect(()=>{
     const fallback=()=>{
@@ -1536,11 +1615,10 @@ export default function Dashboard():JSX.Element {
       else if((h>=10&&h<=11)||(h>=14&&h<=16))setSev('modéré');
       else setSev('fluide');
     };
-    // Try TomTom first; update every 5 min
     const refresh=async()=>{
-      const {sev:s,ok}=await fetchTomTomSev();
-      if(ok&&s){setSev(s);setTomtomOk(true);}
-      else{fallback();setTomtomOk(false);}
+      const {sev:s,ok,ctx}=await fetchTomTom();
+      if(ok&&s){setSev(s);setTomtomOk(true);setTomtomCtx(ctx);}
+      else{fallback();setTomtomOk(false);setTomtomCtx(null);}
     };
     refresh();
     const iv=setInterval(refresh,300_000);
@@ -1551,7 +1629,7 @@ export default function Dashboard():JSX.Element {
 
   const TABS: Record<TabId,JSX.Element>={
     dashboard:<DashboardTab/>,
-    simulator:<SimulatorTab/>,
+    simulator:<SimulatorTab tomtomCtx={tomtomCtx}/>,
     od:<ODTab/>,
     personas:<PersonasTab/>,
     actions:<ActionsTab/>,
