@@ -9,6 +9,29 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
+// ─── TomTom Traffic API ──────────────────────────────────────────────────────
+// Clé gratuite sur developer.tomtom.com (2 500 req/j)
+// Laisser vide → fallback estimation horaire
+const TOMTOM_KEY = ''; // ← coller votre clé ici
+const TOMTOM_POINT = '46.2295,7.3630'; // Centre de Sion
+
+async function fetchTomTomSev(): Promise<string> {
+  if (!TOMTOM_KEY) return '';
+  try {
+    const url = `https://api.tomtom.com/traffic/services/4/flowSegmentData/relative0/10/json?point=${TOMTOM_POINT}&unit=KMPH&key=${TOMTOM_KEY}`;
+    const r = await fetch(url);
+    if (!r.ok) return '';
+    const d = await r.json() as {flowSegmentData?:{currentSpeed:number;freeFlowSpeed:number}};
+    const seg = d?.flowSegmentData;
+    if (!seg) return '';
+    const ratio = seg.currentSpeed / seg.freeFlowSpeed;
+    if (ratio >= 0.85) return 'fluide';
+    if (ratio >= 0.65) return 'modéré';
+    if (ratio >= 0.45) return 'dense';
+    return 'bloqué';
+  } catch { return ''; }
+}
+
 // ─── CSS ──────────────────────────────────────────────────────────────────────
 function useGlobalStyles(): void {
   useEffect(() => {
@@ -497,7 +520,18 @@ function SionMap({simResults,hoveredId,setHoveredId}:MapProps):JSX.Element {
     if(!containerRef.current||mapRef.current)return;
     const map=new maplibregl.Map({
       container:containerRef.current,
-      style:'https://demotiles.maplibre.org/style.json',
+      style:{
+        version:8,
+        glyphs:'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
+        sources:{'osm-raster':{
+          type:'raster',
+          tiles:['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+          tileSize:256,
+          attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+          maxzoom:19
+        }},
+        layers:[{id:'osm-raster',type:'raster',source:'osm-raster',minzoom:0,maxzoom:19}]
+      },
       center:[7.3630,46.2295],
       zoom:13.8,
       attributionControl:false,
@@ -642,7 +676,7 @@ const NAV:{id:TabId;label:string;icon:string;hash:string}[]=[
 ];
 const SEV_COLORS: Record<string,string>={fluide:'#22C55E',modéré:'#F59E0B',dense:'#EA580C',bloqué:'#EF4444'};
 
-function Sidebar({tab,setTab,sev,simDone}:{tab:TabId;setTab:(t:TabId)=>void;sev:string;simDone:boolean}):JSX.Element {
+function Sidebar({tab,setTab,sev,simDone,tomtomOk}:{tab:TabId;setTab:(t:TabId)=>void;sev:string;simDone:boolean;tomtomOk:boolean|null}):JSX.Element {
   const [time,setTime]=useState(fmtNow());
   useEffect(()=>{const i=setInterval(()=>setTime(fmtNow()),30000);return()=>clearInterval(i);},[]);
   const sc=SEV_COLORS[sev]??'#22C55E';
@@ -682,7 +716,16 @@ function Sidebar({tab,setTab,sev,simDone}:{tab:TabId;setTab:(t:TabId)=>void;sev:
         <div style={{display:'flex',alignItems:'center',gap:7,marginBottom:8}}>
           <div className="pulse-dot" style={{width:7,height:7,borderRadius:'50%',background:sc,flexShrink:0}}/>
           <div>
-            <div style={{fontSize:10,fontWeight:600,color:sc}}>Trafic {sev}</div>
+            <div style={{fontSize:10,fontWeight:600,color:sc,display:'flex',alignItems:'center',gap:5}}>
+              Trafic {sev}
+              <span title={tomtomOk===true?'Données TomTom temps réel':tomtomOk===false?'Estimation horaire (pas de clé TomTom)':'Chargement…'}
+                style={{fontSize:8,padding:'1px 5px',borderRadius:4,fontWeight:700,
+                  background:tomtomOk===true?C.green+'22':C.amber+'22',
+                  color:tomtomOk===true?C.green:C.amber,
+                  border:`1px solid ${tomtomOk===true?C.green:C.amber}44`,lineHeight:1.6}}>
+                {tomtomOk===true?'TomTom ●':'⏱ local'}
+              </span>
+            </div>
             <div style={{fontSize:9,color:'#30344A'}}>Route Cantonale · Estimé</div>
           </div>
         </div>
@@ -1478,11 +1521,24 @@ export default function Dashboard():JSX.Element {
     return()=>window.removeEventListener('hashchange',onHash);
   },[]);
 
+  const [tomtomOk,setTomtomOk]=useState<boolean|null>(null);
+
   useEffect(()=>{
-    const h=new Date().getHours();
-    if((h>=7&&h<=9)||(h>=17&&h<=19))setSev('dense');
-    else if((h>=10&&h<=11)||(h>=14&&h<=16))setSev('modéré');
-    else setSev('fluide');
+    const fallback=()=>{
+      const h=new Date().getHours();
+      if((h>=7&&h<=9)||(h>=17&&h<=19))setSev('dense');
+      else if((h>=10&&h<=11)||(h>=14&&h<=16))setSev('modéré');
+      else setSev('fluide');
+    };
+    // Try TomTom first; update every 5 min
+    const refresh=async()=>{
+      const s=await fetchTomTomSev();
+      if(s){setSev(s);setTomtomOk(true);}
+      else{fallback();setTomtomOk(false);}
+    };
+    refresh();
+    const iv=setInterval(refresh,300_000);
+    return()=>clearInterval(iv);
   },[]);
 
   useEffect(()=>{if(tab==='simulator')setSimDone(true);},[tab]);
@@ -1498,7 +1554,7 @@ export default function Dashboard():JSX.Element {
 
   return(
     <div style={{display:'flex',height:'100vh',overflow:'hidden',background:C.bg}}>
-      <Sidebar tab={tab} setTab={setTab} sev={sev} simDone={simDone}/>
+      <Sidebar tab={tab} setTab={setTab} sev={sev} simDone={simDone} tomtomOk={tomtomOk}/>
       <main style={{flex:1,overflow:'auto',display:'flex',flexDirection:'column'}}>
         {TABS[tab]}
       </main>
