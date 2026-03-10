@@ -75,10 +75,10 @@ function useGlobalStyles(): void {
       .hover-lift:hover{transform:translateY(-2px);box-shadow:0 6px 24px rgba(0,0,0,.1);}
       input[type=range]{-webkit-appearance:none;appearance:none;height:4px;border-radius:4px;outline:none;cursor:pointer;}
       input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;cursor:pointer;box-shadow:0 1px 5px rgba(0,0,0,.25);}
-      .park-pin{position:absolute;transform:translate(-50%,-50%);cursor:pointer;transition:transform .15s;}
-      .park-pin:hover{transform:translate(-50%,-50%) scale(1.25);}
-      .park-tooltip{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(100% + 10px);background:white;border-radius:10px;padding:8px 12px;min-width:150px;box-shadow:0 8px 24px rgba(0,0,0,.18);pointer-events:none;white-space:nowrap;z-index:20;}
-      .park-tooltip::after{content:'';position:absolute;top:100%;left:50%;transform:translateX(-50%);border:6px solid transparent;border-top-color:white;}
+      .park-pin{cursor:pointer;transition:transform .18s cubic-bezier(.34,1.56,.64,1);}
+      .park-pin:hover{transform:scale(1.18);}
+      .park-chip{transition:all .18s;white-space:nowrap;}
+      .map-tooltip{pointer-events:none;animation:scaleIn .18s ease forwards;}
     `;
     document.head.appendChild(s);
   }, []);
@@ -526,9 +526,69 @@ function SliderRow({label,value,onChange,min,max,step,baseline,color,unit='/h'}:
   );
 }
 
-// ─── Interactive MapLibre GL map with parking pins ────────────────────────────
+// ─── Interactive MapLibre GL map — CARTO Positron + modern markers ────────────
 interface MapProps{simResults:SimResult|null;hoveredId:string|null;setHoveredId:(id:string|null)=>void}
 interface TooltipState{id:string;x:number;y:number}
+
+// CARTO Positron — vecteur épuré, très moderne, aucune clé requise
+const MAP_STYLE='https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
+
+function buildMarkerEl(p:Parking, occ:number, isActive:boolean): HTMLElement {
+  const col = TYPE_COLOR[p.type]??C.inkM;
+  const sz  = p.type==='centre'?30:p.type==='pr'?26:p.type==='industrie'?20:22;
+  const r   = sz/2;
+  // Occupation arc (full circle = 2πr, filled = pct * 2πr)
+  const circ= 2*Math.PI*r;
+  const dash= `${occ/100*circ} ${circ}`;
+  // Label text
+  const chipTxt = p.type==='pr'?`P+R · ${p.short.replace('P+R ','')}`
+                : p.type==='industrie'?'ZI Ronquoz'
+                : p.short;
+
+  const wrap = document.createElement('div');
+  wrap.className='park-pin';
+  wrap.dataset.pid = p.id;
+  wrap.style.cssText='display:flex;flex-direction:column;align-items:center;gap:3px;';
+
+  const pinSz = sz+16;
+  const c2    = pinSz/2;
+  wrap.innerHTML = `
+    <svg width="${pinSz}" height="${pinSz}" overflow="visible" style="display:block">
+      <!-- Shadow -->
+      <circle cx="${c2}" cy="${c2}" r="${r+1}" fill="rgba(0,0,0,.15)" transform="translate(0,2)"/>
+      <!-- BG circle -->
+      <circle cx="${c2}" cy="${c2}" r="${r}" fill="white" stroke="${col}" stroke-width="${isActive?2.5:1.5}"/>
+      <!-- Occ arc -->
+      <circle cx="${c2}" cy="${c2}" r="${r}" fill="none"
+        stroke="${occ>85?'#ef4444':occ>65?'#f59e0b':'#22c55e'}"
+        stroke-width="${isActive?4:3}"
+        stroke-dasharray="${dash}"
+        stroke-dashoffset="${circ/4}"
+        stroke-linecap="round"
+        opacity="${isActive?1:.8}"/>
+      <!-- Icon dot -->
+      <circle cx="${c2}" cy="${c2}" r="${r*0.38}" fill="${col}" opacity="${isActive?1:.85}"/>
+      ${isActive?`<circle cx="${c2}" cy="${c2}" r="${r+7}" fill="none" stroke="${col}" stroke-width="1.5" opacity=".25"/>`:'' }
+    </svg>
+    <div class="park-chip" style="
+      background:${isActive?col:'white'};
+      color:${isActive?'white':col};
+      border:1.5px solid ${col};
+      border-radius:20px;
+      padding:2px 7px;
+      font-size:9.5px;
+      font-weight:${isActive?800:700};
+      font-family:'Inter',sans-serif;
+      letter-spacing:.01em;
+      box-shadow:0 1px 6px rgba(0,0,0,${isActive?.18:.10});
+      max-width:120px;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      white-space:nowrap;
+    ">${chipTxt}</div>
+  `;
+  return wrap;
+}
 
 function SionMap({simResults,hoveredId,setHoveredId}:MapProps):JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -543,80 +603,36 @@ function SionMap({simResults,hoveredId,setHoveredId}:MapProps):JSX.Element {
     return p.occ;
   };
 
-  // Update tooltip pixel position (called on map move/zoom)
-  const refreshTooltip=(map:maplibregl.Map,id:string|null)=>{
-    if(!id){setTooltip(null);return;}
-    const p=ALL_PARKINGS.find(x=>x.id===id);
-    if(!p){setTooltip(null);return;}
-    const pt=map.project([p.lng,p.lat]);
-    setTooltip({id,x:pt.x,y:pt.y});
-  };
-
   // Init map once
   useEffect(()=>{
     if(!containerRef.current||mapRef.current)return;
     const map=new maplibregl.Map({
       container:containerRef.current,
-      style:{
-        version:8,
-        glyphs:'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
-        sources:{'osm-raster':{
-          type:'raster',
-          tiles:['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-          tileSize:256,
-          attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-          maxzoom:19
-        }},
-        layers:[{id:'osm-raster',type:'raster',source:'osm-raster',minzoom:0,maxzoom:19}]
-      },
-      center:[7.3630,46.2295],
-      zoom:13.8,
+      style:MAP_STYLE,
+      center:[7.363,46.230],
+      zoom:13.6,
       attributionControl:false,
     });
-    map.addControl(new maplibregl.NavigationControl({showCompass:false}));
-    map.addControl(new maplibregl.AttributionControl({compact:true}),  'bottom-right');
+    map.addControl(new maplibregl.NavigationControl({showCompass:false}),'top-right');
+    map.addControl(new maplibregl.AttributionControl({compact:true}),'bottom-right');
     mapRef.current=map;
 
-    // Add parking markers after style loads
     map.on('load',()=>{
       ALL_PARKINGS.forEach(p=>{
-        const col=TYPE_COLOR[p.type]??C.inkM;
-        const sz=p.type==='centre'?26:p.type==='pr'?24:p.type==='industrie'?18:20;
-        const label=p.type==='pr'?'P+R':p.type==='industrie'?'ZI':'P';
         const occ=getOcc(p);
-
-        // Build custom DOM element
-        const el=document.createElement('div');
-        el.className='park-pin';
-        el.style.cssText='position:relative;cursor:pointer;width:0;height:0;';
-        el.innerHTML=`
-          <svg width="${sz+12}" height="${sz+12}" style="position:absolute;top:-${sz/2+6}px;left:-${sz/2+6}px;pointer-events:none">
-            <circle cx="${(sz+12)/2}" cy="${(sz+12)/2}" r="${(sz+6)/2}" fill="none" stroke="${col}" stroke-width="2.5" opacity=".25"/>
-            <circle cx="${(sz+12)/2}" cy="${(sz+12)/2}" r="${(sz+6)/2}" fill="none" stroke="${col}" stroke-width="2.5" opacity=".7"
-              stroke-dasharray="${occ/100*Math.PI*(sz+6)} ${Math.PI*(sz+6)}"
-              stroke-linecap="round"
-              transform="rotate(-90 ${(sz+12)/2} ${(sz+12)/2})"/>
-          </svg>
-          <div data-pin="${p.id}" style="width:${sz}px;height:${sz}px;border-radius:50%;background:${col}CC;
-            border:2.5px solid ${col}80;display:flex;align-items:center;justify-content:center;
-            box-shadow:0 2px 6px ${col}44;transition:all .15s;position:relative;z-index:1;
-            margin-left:-${sz/2}px;margin-top:-${sz/2}px;">
-            <span style="font-size:${sz===26?8.5:7}px;font-weight:800;color:white;font-family:'JetBrains Mono',monospace;line-height:1">${label}</span>
-          </div>
-        `;
-
-        el.addEventListener('click',()=>{
-          setHoveredId(hoveredId===p.id?null:p.id);
+        const el=buildMarkerEl(p,occ,false);
+        el.addEventListener('click',e=>{
+          e.stopPropagation();
+          setHoveredId(p.id);
         });
-
-        const marker=new maplibregl.Marker({element:el,anchor:'center'})
+        const marker=new maplibregl.Marker({element:el,anchor:'bottom',offset:[0,0]})
           .setLngLat([p.lng,p.lat])
           .addTo(map);
         markersRef.current[p.id]=marker;
       });
     });
 
-    // Refresh tooltip position on map move
+    // Update tooltip pixel pos on map move
     map.on('move',()=>{
       setTooltip(prev=>{
         if(!prev)return null;
@@ -627,77 +643,129 @@ function SionMap({simResults,hoveredId,setHoveredId}:MapProps):JSX.Element {
       });
     });
 
+    // Click on map background → deselect
+    map.on('click',()=>setHoveredId(null));
+
     return()=>{map.remove();mapRef.current=null;};
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
 
-  // Sync hoveredId → tooltip position & marker style
+  // Rebuild markers when simResults change (occ values update)
   useEffect(()=>{
     const map=mapRef.current;
     if(!map||!map.isStyleLoaded())return;
-    // Update all marker styles
     ALL_PARKINGS.forEach(p=>{
-      const pin=document.querySelector<HTMLElement>(`[data-pin="${p.id}"]`);
-      if(!pin)return;
-      const col=TYPE_COLOR[p.type]??C.inkM;
-      const isH=hoveredId===p.id;
-      pin.style.background=isH?col:col+'CC';
-      pin.style.border=`2.5px solid ${isH?'white':col+'80'}`;
-      pin.style.boxShadow=isH?`0 4px 16px ${col}66`:`0 2px 6px ${col}44`;
-      pin.style.zIndex=isH?'10':'1';
+      const marker=markersRef.current[p.id];
+      if(!marker)return;
+      const occ=getOcc(p);
+      const isActive=hoveredId===p.id;
+      const newEl=buildMarkerEl(p,occ,isActive);
+      newEl.addEventListener('click',e=>{e.stopPropagation();setHoveredId(p.id);});
+      marker.getElement().replaceWith(newEl);
+      // update element reference on marker
+      (marker as any)._element=newEl;
     });
-    // Set tooltip position
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[simResults,hoveredId]);
+
+  // Tooltip position when hoveredId changes
+  useEffect(()=>{
+    const map=mapRef.current;
     if(hoveredId&&map){
       const p=ALL_PARKINGS.find(x=>x.id===hoveredId);
-      if(p){
-        const pt=map.project([p.lng,p.lat]);
-        setTooltip({id:hoveredId,x:pt.x,y:pt.y});
-      }
-    } else {
-      setTooltip(null);
-    }
+      if(p){const pt=map.project([p.lng,p.lat]);setTooltip({id:hoveredId,x:pt.x,y:pt.y});}
+    } else {setTooltip(null);}
   },[hoveredId]);
 
-  // Render tooltip for hovered parking
   const hovP=tooltip?ALL_PARKINGS.find(x=>x.id===tooltip.id):null;
-  const occ=hovP?getOcc(hovP):0;
-  const col=hovP?(TYPE_COLOR[hovP.type]??C.inkM):C.inkM;
+  const tOcc=hovP?getOcc(hovP):0;
+  const tCol=hovP?(TYPE_COLOR[hovP.type]??C.inkM):C.inkM;
+  const occColor=tOcc>85?C.red:tOcc>65?C.amber:C.green;
 
   return(
     <div style={{position:'relative',width:'100%',height:'100%',borderRadius:10,overflow:'hidden'}}>
-      {/* MapLibre GL container */}
       <div ref={containerRef} style={{width:'100%',height:'100%'}}/>
 
-      {/* React tooltip overlay */}
-      {hovP&&tooltip&&(
-        <div className="park-tooltip scale-in"
-          style={{
-            position:'absolute',
-            left:tooltip.x+14,
-            top:tooltip.y-10,
+      {/* Tooltip card */}
+      {hovP&&tooltip&&(()=>{
+        // keep tooltip inside map bounds
+        const left=Math.min(tooltip.x+16, (containerRef.current?.offsetWidth??600)-210);
+        const top=Math.max(tooltip.y-140,8);
+        return(
+          <div className="map-tooltip" style={{
+            position:'absolute',left,top,
+            background:'white',
+            borderRadius:14,
+            padding:'14px 16px',
+            width:200,
+            boxShadow:'0 8px 32px rgba(0,0,0,.16),0 2px 8px rgba(0,0,0,.08)',
+            border:`1.5px solid ${tCol}33`,
             zIndex:30,
-            pointerEvents:'none',
           }}>
-          <div style={{fontSize:12,fontWeight:800,color:C.ink,marginBottom:3}}>{hovP.short}</div>
-          <div style={{fontSize:10,color:C.inkM,marginBottom:2}}>{hovP.places.toLocaleString('fr-CH')} places</div>
-          <div style={{fontSize:11,fontWeight:700,color:col,marginBottom:2}}>
-            {hovP.tarifBaseline===0?'GRATUIT':`CHF ${hovP.tarifBaseline.toFixed(1)}/h`}
+            {/* Color stripe top */}
+            <div style={{position:'absolute',top:0,left:0,right:0,height:4,borderRadius:'14px 14px 0 0',background:tCol}}/>
+            <div style={{marginTop:4}}>
+              <div style={{fontSize:13,fontWeight:800,color:C.ink,marginBottom:1}}>{hovP.name}</div>
+              <div style={{fontSize:9.5,color:C.inkL,marginBottom:10,textTransform:'uppercase',letterSpacing:'.06em'}}>{hovP.type}</div>
+              {/* Places */}
+              <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+                <span style={{fontSize:10,color:C.inkM}}>Places</span>
+                <span style={{fontSize:11,fontWeight:800,color:C.ink,fontFamily:'JetBrains Mono,monospace'}}>{hovP.places.toLocaleString('fr-CH')}</span>
+              </div>
+              {/* Tarif */}
+              <div style={{display:'flex',justifyContent:'space-between',marginBottom:10}}>
+                <span style={{fontSize:10,color:C.inkM}}>Tarif</span>
+                <span style={{fontSize:11,fontWeight:800,color:tCol,fontFamily:'JetBrains Mono,monospace'}}>
+                  {hovP.tarifBaseline===0?'GRATUIT':`CHF ${hovP.tarifBaseline.toFixed(1)}/h`}
+                </span>
+              </div>
+              {/* Occupation bar */}
+              <div style={{marginBottom:8}}>
+                <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}>
+                  <span style={{fontSize:10,color:C.inkM}}>Occupation</span>
+                  <span style={{fontSize:11,fontWeight:800,color:occColor,fontFamily:'JetBrains Mono,monospace'}}>{tOcc}%{!hovP.ok?' ⚠':''}</span>
+                </div>
+                <div style={{height:6,background:'#F0EEE8',borderRadius:4,overflow:'hidden'}}>
+                  <div style={{width:`${tOcc}%`,height:'100%',background:occColor,borderRadius:4,transition:'width .4s ease'}}/>
+                </div>
+              </div>
+              {/* Note */}
+              <div style={{fontSize:8.5,color:C.inkL,lineHeight:1.5,borderTop:`1px solid ${C.borderL}`,paddingTop:7}}>{hovP.note}</div>
+            </div>
           </div>
-          <div style={{fontSize:10,fontWeight:700,color:occ>85?C.red:occ>65?C.amber:C.green}}>
-            Occ. {occ}%{!hovP.ok?' · ⚠ estimé':''}
-          </div>
-          <div style={{fontSize:8.5,color:C.inkL,marginTop:3,maxWidth:180,whiteSpace:'normal',lineHeight:1.4}}>{hovP.note}</div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Scenario badge */}
       {simResults&&(
-        <div style={{position:'absolute',top:8,left:8,background:simResults.isNegative?C.red:C.green,
-          color:'white',borderRadius:8,padding:'5px 10px',fontSize:11,fontWeight:800,
-          fontFamily:"'JetBrains Mono',monospace",boxShadow:'0 4px 12px rgba(0,0,0,.25)',zIndex:10}}>
-          {simResults.isNegative?'-':''}{(Math.abs(simResults.totalShift)*100).toFixed(1)}% report
+        <div style={{
+          position:'absolute',top:10,left:10,
+          background:simResults.isNegative?C.red:C.green,
+          color:'white',borderRadius:20,padding:'5px 14px',
+          fontSize:11,fontWeight:800,
+          fontFamily:"'JetBrains Mono',monospace",
+          boxShadow:'0 4px 16px rgba(0,0,0,.2)',zIndex:10,
+        }}>
+          {simResults.isNegative?'−':'+'}{(Math.abs(simResults.totalShift)*100).toFixed(1)}% report modal
         </div>
       )}
+
+      {/* Legend */}
+      <div style={{
+        position:'absolute',bottom:28,left:10,
+        background:'rgba(255,255,255,.92)',
+        backdropFilter:'blur(8px)',
+        borderRadius:10,padding:'8px 12px',
+        boxShadow:'0 2px 12px rgba(0,0,0,.1)',
+        zIndex:10,display:'flex',flexDirection:'column',gap:5,
+      }}>
+        {([['centre',C.red,'Centre-ville'],['pr',C.green,'P+R Gratuits'],['pericentre',C.amber,'Péricentre'],['gare',C.blue,'Gare CFF']] as [string,string,string][]).map(([type,col,lbl])=>(
+          <div key={type} style={{display:'flex',alignItems:'center',gap:6}}>
+            <div style={{width:10,height:10,borderRadius:'50%',background:col,flexShrink:0}}/>
+            <span style={{fontSize:9,color:C.inkM,fontWeight:600}}>{lbl}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
