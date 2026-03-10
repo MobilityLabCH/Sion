@@ -530,80 +530,64 @@ function SliderRow({label,value,onChange,min,max,step,baseline,color,unit='/h'}:
 interface MapProps{simResults:SimResult|null;hoveredId:string|null;setHoveredId:(id:string|null)=>void}
 interface TooltipState{id:string;x:number;y:number}
 
-// CARTO Positron — vecteur épuré, très moderne, aucune clé requise
 const MAP_STYLE='https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
 
-function buildMarkerEl(p:Parking, occ:number, isActive:boolean): HTMLElement {
-  const col = TYPE_COLOR[p.type]??C.inkM;
-  const sz  = p.type==='centre'?30:p.type==='pr'?26:p.type==='industrie'?20:22;
-  const r   = sz/2;
-  // Occupation arc (full circle = 2πr, filled = pct * 2πr)
-  const circ= 2*Math.PI*r;
-  const dash= `${occ/100*circ} ${circ}`;
-  // Label text
-  const chipTxt = p.type==='pr'?`P+R · ${p.short.replace('P+R ','')}`
-                : p.type==='industrie'?'ZI Ronquoz'
-                : p.short;
-
-  const wrap = document.createElement('div');
-  wrap.className='park-pin';
-  wrap.dataset.pid = p.id;
-  wrap.style.cssText='display:flex;flex-direction:column;align-items:center;gap:3px;';
-
-  const pinSz = sz+16;
-  const c2    = pinSz/2;
-  wrap.innerHTML = `
-    <svg width="${pinSz}" height="${pinSz}" overflow="visible" style="display:block">
-      <!-- Shadow -->
-      <circle cx="${c2}" cy="${c2}" r="${r+1}" fill="rgba(0,0,0,.15)" transform="translate(0,2)"/>
-      <!-- BG circle -->
-      <circle cx="${c2}" cy="${c2}" r="${r}" fill="white" stroke="${col}" stroke-width="${isActive?2.5:1.5}"/>
-      <!-- Occ arc -->
-      <circle cx="${c2}" cy="${c2}" r="${r}" fill="none"
-        stroke="${occ>85?'#ef4444':occ>65?'#f59e0b':'#22c55e'}"
-        stroke-width="${isActive?4:3}"
-        stroke-dasharray="${dash}"
-        stroke-dashoffset="${circ/4}"
-        stroke-linecap="round"
-        opacity="${isActive?1:.8}"/>
-      <!-- Icon dot -->
-      <circle cx="${c2}" cy="${c2}" r="${r*0.38}" fill="${col}" opacity="${isActive?1:.85}"/>
-      ${isActive?`<circle cx="${c2}" cy="${c2}" r="${r+7}" fill="none" stroke="${col}" stroke-width="1.5" opacity=".25"/>`:'' }
+// Returns the inner HTML for a marker — never touch the outer wrapper element
+// (MapLibre tracks that element; replacing it loses all markers)
+function markerInner(p:Parking, occ:number, active:boolean):string {
+  const col  = TYPE_COLOR[p.type]??C.inkM;
+  const sz   = p.type==='centre'?30:p.type==='pr'?26:p.type==='industrie'?20:22;
+  const r    = sz/2;
+  const circ = 2*Math.PI*r;
+  const dash = `${occ/100*circ} ${circ}`;
+  const oc   = sz/4;   // dashoffset = circ/4 to start arc at top
+  const chip = p.type==='pr'?`P+R · ${p.short.replace('P+R ','')}`
+             : p.type==='industrie'?'ZI Ronquoz'
+             : p.short;
+  const arcCol = occ>85?'#ef4444':occ>65?'#f59e0b':'#22c55e';
+  const pinSz = sz+16; const c2=pinSz/2;
+  return `
+    <svg width="${pinSz}" height="${pinSz}" overflow="visible" style="display:block;flex-shrink:0">
+      <circle cx="${c2}" cy="${c2+2}" r="${r}" fill="rgba(0,0,0,.12)"/>
+      <circle cx="${c2}" cy="${c2}" r="${r}" fill="white" stroke="${col}" stroke-width="${active?2.5:1.5}"/>
+      <circle cx="${c2}" cy="${c2}" r="${r}" fill="none" stroke="${arcCol}"
+        stroke-width="${active?4:3}" stroke-dasharray="${dash}"
+        stroke-dashoffset="${circ/4}" stroke-linecap="round" opacity="${active?1:.75}"/>
+      <circle cx="${c2}" cy="${c2}" r="${r*0.38}" fill="${col}"/>
+      ${active?`<circle cx="${c2}" cy="${c2}" r="${r+8}" fill="none" stroke="${col}" stroke-width="1.5" opacity=".2"/>`:''}
     </svg>
-    <div class="park-chip" style="
-      background:${isActive?col:'white'};
-      color:${isActive?'white':col};
-      border:1.5px solid ${col};
-      border-radius:20px;
-      padding:2px 7px;
-      font-size:9.5px;
-      font-weight:${isActive?800:700};
-      font-family:'Inter',sans-serif;
-      letter-spacing:.01em;
-      box-shadow:0 1px 6px rgba(0,0,0,${isActive?.18:.10});
-      max-width:120px;
-      overflow:hidden;
-      text-overflow:ellipsis;
-      white-space:nowrap;
-    ">${chipTxt}</div>
-  `;
-  return wrap;
+    <div style="
+      background:${active?col:'white'};color:${active?'white':col};
+      border:1.5px solid ${col};border-radius:20px;padding:2px 8px;
+      font-size:9.5px;font-weight:${active?800:700};font-family:'Inter',sans-serif;
+      box-shadow:0 1px 6px rgba(0,0,0,${active?.2:.1});
+      max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+      transition:background .15s,color .15s;
+    ">${chip}</div>`;
 }
 
 function SionMap({simResults,hoveredId,setHoveredId}:MapProps):JSX.Element {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef       = useRef<maplibregl.Map|null>(null);
-  const markersRef   = useRef<Record<string,maplibregl.Marker>>({});
+  const containerRef  = useRef<HTMLDivElement>(null);
+  const mapRef        = useRef<maplibregl.Map|null>(null);
+  const markersRef    = useRef<Record<string,maplibregl.Marker>>({});
+  const hovIdRef      = useRef<string|null>(null);   // shadow ref — no re-render
+  const justClickedRef= useRef(false);               // prevent map-click deselect after pin-click
   const [tooltip,setTooltip]=useState<TooltipState|null>(null);
 
-  const getOcc=(p:Parking)=>{
+  const getOcc=useCallback((p:Parking)=>{
     if(!simResults)return p.occ;
     if(p.type==='centre')return simResults.centreOcc;
     if(p.type==='pr')return Math.min(96,p.occ+Math.round(simResults.prUsage/(SIM.prPlaces||1)*40));
     return p.occ;
-  };
+  },[simResults]);
 
-  // Init map once
+  // Mutates existing element innerHTML — never replace the element MapLibre tracks
+  const refreshMarker=useCallback((p:Parking,active:boolean)=>{
+    const el=markersRef.current[p.id]?.getElement();
+    if(el) el.innerHTML=markerInner(p,getOcc(p),active);
+  },[getOcc]);
+
+  // Init map ONCE
   useEffect(()=>{
     if(!containerRef.current||mapRef.current)return;
     const map=new maplibregl.Map({
@@ -619,20 +603,29 @@ function SionMap({simResults,hoveredId,setHoveredId}:MapProps):JSX.Element {
 
     map.on('load',()=>{
       ALL_PARKINGS.forEach(p=>{
-        const occ=getOcc(p);
-        const el=buildMarkerEl(p,occ,false);
-        el.addEventListener('click',e=>{
+        const wrap=document.createElement('div');
+        wrap.className='park-pin';
+        wrap.style.cssText='display:flex;flex-direction:column;align-items:center;gap:3px;';
+        wrap.innerHTML=markerInner(p,p.occ,false);
+        wrap.addEventListener('click',e=>{
           e.stopPropagation();
-          setHoveredId(p.id);
+          justClickedRef.current=true;
+          // toggle: click active → deselect; click other → select
+          const next=hovIdRef.current===p.id?null:p.id;
+          setHoveredId(next);
         });
-        const marker=new maplibregl.Marker({element:el,anchor:'bottom',offset:[0,0]})
-          .setLngLat([p.lng,p.lat])
-          .addTo(map);
-        markersRef.current[p.id]=marker;
+        const m=new maplibregl.Marker({element:wrap,anchor:'bottom'})
+          .setLngLat([p.lng,p.lat]).addTo(map);
+        markersRef.current[p.id]=m;
       });
     });
 
-    // Update tooltip pixel pos on map move
+    // Deselect only when clicking the background (not a pin)
+    map.on('click',()=>{
+      if(justClickedRef.current){justClickedRef.current=false;return;}
+      setHoveredId(null);
+    });
+
     map.on('move',()=>{
       setTooltip(prev=>{
         if(!prev)return null;
@@ -643,30 +636,32 @@ function SionMap({simResults,hoveredId,setHoveredId}:MapProps):JSX.Element {
       });
     });
 
-    // Click on map background → deselect
-    map.on('click',()=>setHoveredId(null));
-
     return()=>{map.remove();mapRef.current=null;};
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
 
-  // Rebuild markers when simResults change (occ values update)
+  // Sync hover state → update marker visuals in-place (no replace)
   useEffect(()=>{
-    const map=mapRef.current;
-    if(!map||!map.isStyleLoaded())return;
-    ALL_PARKINGS.forEach(p=>{
-      const marker=markersRef.current[p.id];
-      if(!marker)return;
-      const occ=getOcc(p);
-      const isActive=hoveredId===p.id;
-      const newEl=buildMarkerEl(p,occ,isActive);
-      newEl.addEventListener('click',e=>{e.stopPropagation();setHoveredId(p.id);});
-      marker.getElement().replaceWith(newEl);
-      // update element reference on marker
-      (marker as any)._element=newEl;
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[simResults,hoveredId]);
+    const prev=hovIdRef.current;
+    hovIdRef.current=hoveredId;
+    if(prev&&prev!==hoveredId){
+      const p=ALL_PARKINGS.find(x=>x.id===prev);
+      if(p)refreshMarker(p,false);
+    }
+    if(hoveredId){
+      const p=ALL_PARKINGS.find(x=>x.id===hoveredId);
+      if(p)refreshMarker(p,true);
+      const map=mapRef.current;
+      if(map&&p){const pt=map.project([p.lng,p.lat]);setTooltip({id:hoveredId,x:pt.x,y:pt.y});}
+    } else {
+      setTooltip(null);
+    }
+  },[hoveredId,refreshMarker]);
+
+  // Update occ arcs when simResults change (after simulation)
+  useEffect(()=>{
+    ALL_PARKINGS.forEach(p=>refreshMarker(p,hovIdRef.current===p.id));
+  },[simResults,refreshMarker]);
 
   // Tooltip position when hoveredId changes
   useEffect(()=>{
