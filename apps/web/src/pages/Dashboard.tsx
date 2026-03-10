@@ -9,27 +9,28 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
-// ─── TomTom Traffic API ──────────────────────────────────────────────────────
-// Clé gratuite sur developer.tomtom.com (2 500 req/j)
-// Laisser vide → fallback estimation horaire
-const TOMTOM_KEY = ''; // ← coller votre clé ici
-const TOMTOM_POINT = '46.2295,7.3630'; // Centre de Sion
+// ─── TomTom Traffic — via Worker proxy ──────────────────────────────────────
+// La clé TOMTOM_API_KEY est stockée dans le Worker Cloudflare (secret).
+// Dashboard appelle /api/traffic/flow ; le Worker proxifie TomTom.
+const WORKER_URL = 'https://sion.ericimstepf.workers.dev';
 
-async function fetchTomTomSev(): Promise<string> {
-  if (!TOMTOM_KEY) return '';
+interface TrafficFlowResp {
+  connected: boolean;
+  severity?: string;
+  congestionIdx?: number;
+  currentSpeed?: number;
+  freeFlowSpeed?: number;
+  error?: string;
+}
+
+async function fetchTomTomSev(): Promise<{sev:string;ok:boolean}> {
   try {
-    const url = `https://api.tomtom.com/traffic/services/4/flowSegmentData/relative0/10/json?point=${TOMTOM_POINT}&unit=KMPH&key=${TOMTOM_KEY}`;
-    const r = await fetch(url);
-    if (!r.ok) return '';
-    const d = await r.json() as {flowSegmentData?:{currentSpeed:number;freeFlowSpeed:number}};
-    const seg = d?.flowSegmentData;
-    if (!seg) return '';
-    const ratio = seg.currentSpeed / seg.freeFlowSpeed;
-    if (ratio >= 0.85) return 'fluide';
-    if (ratio >= 0.65) return 'modéré';
-    if (ratio >= 0.45) return 'dense';
-    return 'bloqué';
-  } catch { return ''; }
+    const r = await fetch(`${WORKER_URL}/api/traffic/flow`, {cache:'no-store'});
+    if (!r.ok) return {sev:'',ok:false};
+    const d = await r.json() as TrafficFlowResp;
+    if (!d.connected || !d.severity) return {sev:'',ok:false};
+    return {sev:d.severity,ok:true};
+  } catch { return {sev:'',ok:false}; }
 }
 
 // ─── CSS ──────────────────────────────────────────────────────────────────────
@@ -1532,8 +1533,8 @@ export default function Dashboard():JSX.Element {
     };
     // Try TomTom first; update every 5 min
     const refresh=async()=>{
-      const s=await fetchTomTomSev();
-      if(s){setSev(s);setTomtomOk(true);}
+      const {sev:s,ok}=await fetchTomTomSev();
+      if(ok&&s){setSev(s);setTomtomOk(true);}
       else{fallback();setTomtomOk(false);}
     };
     refresh();
