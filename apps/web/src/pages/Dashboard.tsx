@@ -731,7 +731,11 @@ function Sidebar({tab,setTab,sev,simDone,tomtomOk}:{tab:TabId;setTab:(t:TabId)=>
           </div>
         </div>
         <div className="mono" style={{fontSize:8.5,color:'#30344A',lineHeight:1.6}}>{fmtToday()}<br/>Heure: {time}</div>
-        <div style={{marginTop:7,fontSize:8,color:'#252838'}}>v2.2 · MobilityLab prototype<br/>sion.ch 2024-2025 · ARE 2021</div>
+        <div style={{marginTop:8,padding:'6px 8px',background:'white',borderRadius:7,display:'flex',alignItems:'center',justifyContent:'center'}}>
+          <img src="https://cdn.prod.website-files.com/68999761ebd91ddcd4777149/68aec0b94d619a9c2296088b_Logo_Lockup_01_MobilityLab_Black_Red.png"
+            alt="MobilityLab" style={{height:22,objectFit:'contain',maxWidth:'100%'}}/>
+        </div>
+        <div style={{marginTop:5,fontSize:8,color:'#252838',textAlign:'center'}}>sion.ch 2024-2025 · ARE 2021</div>
       </div>
     </div>
   );
@@ -989,7 +993,7 @@ function SimulatorTab():JSX.Element {
         {R&&(
           <div style={{padding:'10px 14px',background:C.white,borderBottom:`1px solid ${C.border}`,display:'flex',gap:8}}>
             <KpiTile key={simKey+'a'} animKey={simKey+'a'} value={(R.isNegative?'+':'-')+fmt(R.carsReduced)} label={R.isNegative?'Voitures/j en PLUS':'Voitures/j en moins'} delta={R.isNegative?-R.carsReduced:R.carsReduced} color={R.isNegative?C.red:C.green}/>
-            <KpiTile key={simKey+'b'} animKey={simKey+'b'} value={(R.tpGain>=0?'+':'')+fmt(R.tpGain)} label="Variation voyageurs TP/j" delta={R.tpGain} color={R.tpGain>=0?C.blue:C.red}/>
+            <KpiTile key={simKey+'b'} animKey={simKey+'b'} value={(R.tpGain>0?'+':R.tpGain<0?'−':'')+fmt(R.tpGain)} label={R.tpGain>=0?'Voyageurs TP gagnés/j':'Voyageurs TP perdus/j'} delta={R.tpGain} color={R.tpGain>=0?C.blue:C.red}/>
             <KpiTile key={simKey+'c'} animKey={simKey+'c'} value={(R.co2>=0?'-':'+')+fmt(Math.abs(R.co2))+' kg'} label="CO₂ évité/généré /j" delta={R.co2} color={R.co2>=0?C.green:C.red}/>
             <KpiTile key={simKey+'d'} animKey={simKey+'d'} value={`CHF ${fmt(R.revenueDay)}`} label="Recettes parking centre/j" delta={R.revDelta} color={R.revDelta>=0?C.amber:C.red} sub={`Δ ${R.revDelta>=0?'+':''}CHF ${fmt(R.revDelta)}/j`}/>
           </div>
@@ -1000,7 +1004,8 @@ function SimulatorTab():JSX.Element {
             <div>
               <div style={{fontSize:11,fontWeight:700,color:C.red}}>Effets négatifs détectés</div>
               <div style={{fontSize:9.5,color:'#8B2030'}}>
-                Baisser le tarif sous CHF 3.0/h augmente l'attractivité du centre → occ. {R.centreOcc}%, congestion {R.congestion}/4
+                Baisser le tarif sous CHF 3.0/h augmente l'attractivité du centre → occ. {R.centreOcc}%,
+                congestion {R.congestion}/4 · perte TP estimée&nbsp;{fmt(Math.abs(R.tpGain))} pax/j
               </div>
             </div>
           </div>
@@ -1077,7 +1082,7 @@ function SimulatorTab():JSX.Element {
               </div>
               {([
                 {icon:'🚗',l:R.isNegative?'Voitures en plus/j':'Voitures en moins/j',v:(R.isNegative?'+':'-')+fmt(R.carsReduced),c:R.isNegative?C.red:C.green},
-                {icon:'🚌',l:'Voyageurs TP supp./j',v:(R.tpGain>=0?'+':'')+fmt(R.tpGain),c:R.tpGain>=0?C.blue:C.red},
+                {icon:'🚌',l:R.tpGain>=0?'Voyageurs TP gagnés/j':'Voyageurs TP perdus/j',v:(R.tpGain>0?'+':R.tpGain<0?'−':'')+fmt(R.tpGain),c:R.tpGain>=0?C.blue:C.red},
                 {icon:'🅿',l:'Occupation centre',v:`${R.centreOcc}%`,c:R.centreOcc>85?C.red:R.centreOcc>65?C.amber:C.green},
                 {icon:'🌿',l:'CO₂ évité−/généré+',v:`${R.co2>=0?'-':'+'} ${fmt(Math.abs(R.co2))} kg`,c:R.co2>=0?C.green:C.red},
                 {icon:'💰',l:'Recettes parking/j',v:`CHF ${fmt(R.revenueDay)}`,c:R.revDelta>=0?C.amber:C.red},
